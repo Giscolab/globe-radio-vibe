@@ -1,86 +1,108 @@
-// Engine - Station Service (orchestration layer)
-import { Station } from '../types/radio';
-import { logger } from '../core/logger';
-import { stationRepository } from './repository/stationRepo';
-import { fetchStationsByCountry, searchStations, reportStationClick } from './sources/radiobrowser';
+import * as RadioBrowser from "radio-browser";
+import { Station } from "../types/radio";
+import { logger } from "../core/logger";
 
-interface CacheEntry {
+// Cache simple en mémoire
+type CacheEntry = {
   timestamp: number;
   data: Station[];
-}
+};
 
-const cache: Map<string, CacheEntry> = new Map();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const CACHE_TTL = 5 * 60 * 1000;
+const cache = new Map<string, CacheEntry>();
 
 function isCacheValid(key: string): boolean {
   const entry = cache.get(key);
-  if (!entry) return false;
-  return Date.now() - entry.timestamp < CACHE_TTL;
+  return !!entry && Date.now() - entry.timestamp < CACHE_TTL;
 }
 
+// ----------------------------------
+// Mapping RadioBrowser → Station
+// ----------------------------------
+function mapStation(rb: any): Station {
+  return {
+    id: rb.stationuuid,
+    name: rb.name,
+    url: rb.url_resolved || rb.url,
+    homepage: rb.homepage || null,
+    favicon: rb.favicon || null,
+    country: rb.country || "",
+    countryCode: rb.countrycode || "",
+    state: rb.state || null,
+    tags: rb.tags ? rb.tags.split(",").map((t: string) => t.trim()) : [],
+    bitrate: Number(rb.bitrate) || 0,
+    codec: rb.codec || null,
+    votes: Number(rb.votes) || 0,
+    geo:
+      rb.geo_lat && rb.geo_long
+        ? { lat: Number(rb.geo_lat), lon: Number(rb.geo_long) }
+        : null,
+  };
+}
+
+// ----------------------------------
+// GET BY COUNTRY
+// ----------------------------------
 export async function getStationsByCountry(
   countryCode: string,
-  forceRefresh: boolean = false
+  forceRefresh = false
 ): Promise<Station[]> {
-  const cacheKey = `country:${countryCode.toUpperCase()}`;
-  
-  // Check cache first
-  if (!forceRefresh && isCacheValid(cacheKey)) {
-    logger.debug('StationService', `Cache hit for ${countryCode}`);
-    return cache.get(cacheKey)!.data;
+  const key = `country:${countryCode.toUpperCase()}`;
+
+  if (!forceRefresh && isCacheValid(key)) {
+    return cache.get(key)!.data;
   }
-  
-  // Check repository
-  const repoStations = stationRepository.getByCountry(countryCode);
-  if (!forceRefresh && repoStations.length > 0) {
-    logger.debug('StationService', `Repository hit for ${countryCode}: ${repoStations.length} stations`);
-    return repoStations;
-  }
-  
-  // Fetch from API
-  logger.info('StationService', `Fetching stations for ${countryCode} from API`);
-  const stations = await fetchStationsByCountry(countryCode);
-  
-  // Update repository and cache
-  if (stations.length > 0) {
-    stationRepository.upsertMany(stations);
-    cache.set(cacheKey, { timestamp: Date.now(), data: stations });
-  }
-  
+
+  logger.info("StationService", `Fetching stations for ${countryCode}`);
+
+  const result = await RadioBrowser.searchStations({
+    countrycode: countryCode,
+    limit: 500,
+  });
+
+  const stations = result.map(mapStation);
+
+  cache.set(key, { timestamp: Date.now(), data: stations });
   return stations;
 }
 
-export async function searchStationsByQuery(query: string): Promise<Station[]> {
-  // First search in repository
-  const localResults = stationRepository.search(query);
-  if (localResults.length >= 10) {
-    return localResults;
-  }
-  
-  // If not enough results, search API
-  const apiResults = await searchStations({ name: query, limit: 50 });
-  stationRepository.upsertMany(apiResults);
-  
-  // Merge and dedupe
-  const allIds = new Set<string>();
-  const merged: Station[] = [];
-  
-  for (const station of [...localResults, ...apiResults]) {
-    if (!allIds.has(station.id)) {
-      allIds.add(station.id);
-      merged.push(station);
-    }
-  }
-  
-  return merged;
+// ----------------------------------
+// SEARCH
+// ----------------------------------
+export async function searchStations(query: string): Promise<Station[]> {
+  const key = `search:${query}`;
+
+  if (isCacheValid(key)) return cache.get(key)!.data;
+
+  const result = await RadioBrowser.searchStations({
+    searchterm: query,
+    limit: 100,
+  });
+
+  const stations = result.map(mapStation);
+  cache.set(key, { timestamp: Date.now(), data: stations });
+
+  return stations;
 }
 
+// ----------------------------------
+// CLICK REPORT
+// ----------------------------------
 export async function onStationPlay(stationId: string): Promise<void> {
-  // Report click to RadioBrowser (async, non-blocking)
-  reportStationClick(stationId).catch(() => {});
+  try {
+    await RadioBrowser.clickStation(stationId);
+  } catch {
+    // ignore
+  }
 }
 
-export function clearCache(): void {
+// ----------------------------------
+// CACHE CONTROL
+// ----------------------------------
+export function clearCache() {
   cache.clear();
-  logger.info('StationService', 'Cache cleared');
+  logger.info("StationService", "Cache cleared");
 }
+
+// alias compat
+export const searchStationsByQuery = searchStations;

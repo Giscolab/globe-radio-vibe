@@ -1,243 +1,203 @@
 #!/usr/bin/env node
 /**
- * import-stations.mjs - Import radio stations from RadioBrowser API
- * 
- * Usage: node scripts/import-stations.mjs [options]
- * Options:
- *   --countries <codes>   Comma-separated ISO country codes (default: all)
- *   --limit <n>           Max stations per country (default: 1000)
- *   --output <path>       Output file path (default: public/data/stations.json)
- *   --format <json|db>    Output format (default: json)
- *   --min-votes <n>       Minimum votes filter (default: 0)
+ * robust-import-stations.mjs
+ * Robust RadioBrowser dump exporter with multi-server fallback and GitHub fallback.
+ *
+ * Usage: node scripts/robust-import-stations.mjs
+ *
+ * Requirements: Node 18+ (native fetch). If older Node, install node-fetch and adapt.
  */
 
-import { writeFileSync, mkdirSync, existsSync } from 'fs';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { writeFileSync, mkdirSync, existsSync } from "fs";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = join(__dirname, '..');
+const PROJECT_ROOT = join(__dirname, "..");
 
-// RadioBrowser API base URL
-const API_BASE = 'https://de1.api.radio-browser.info/json';
+// Candidate servers and alternate raw dump fallback
+const SERVERS = [
+  // prefer explicit mirrors that historically serve /json
+  "https://fr1.api.radio-browser.info",
+  "https://de1.api.radio-browser.info",
+  "https://nl1.api.radio-browser.info",
+  "https://uk1.api.radio-browser.info",
+  "https://us1.api.radio-browser.info",
+];
 
-// Parse CLI arguments
-function parseArgs() {
-  const args = process.argv.slice(2);
-  const options = {
-    countries: null,
-    limit: 1000,
-    output: 'public/data/stations.json',
-    format: 'json',
-    minVotes: 0,
-  };
+// Some hosts (load balancers) may not accept /json path; we will try both patterns
+const LOAD_BALANCER = "https://api.radio-browser.info";
 
-  for (let i = 0; i < args.length; i++) {
-    switch (args[i]) {
-      case '--countries':
-        options.countries = args[++i]?.split(',').map(c => c.trim().toUpperCase());
-        break;
-      case '--limit':
-        options.limit = parseInt(args[++i], 10);
-        break;
-      case '--output':
-        options.output = args[++i];
-        break;
-      case '--format':
-        options.format = args[++i];
-        break;
-      case '--min-votes':
-        options.minVotes = parseInt(args[++i], 10);
-        break;
-    }
-  }
+// Optional public dump fallback (raw GitHub URL). Replace if you have a preferred dump.
+const GITHUB_DUMP_URL =
+  "https://raw.githubusercontent.com/segler-alex/radiobrowser-data/main/stations.json";
 
-  return options;
-}
-
-// Fetch with retry
-async function fetchWithRetry(url, retries = 3) {
-  for (let i = 0; i < retries; i++) {
+async function tryFetch(url, opts = {}, retries = 2, backoffMs = 1000) {
+  for (let i = 0; i <= retries; i++) {
     try {
-      const response = await fetch(url, {
-        headers: { 'User-Agent': 'GlobeRadioEngine/1.0' }
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      
-      return response.json();
-    } catch (error) {
-      if (i === retries - 1) throw error;
-      await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+      const res = await fetch(url, opts);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res;
+    } catch (err) {
+      if (i === retries) throw err;
+      await new Promise((r) => setTimeout(r, backoffMs * (i + 1)));
     }
   }
 }
 
-// Get list of countries from RadioBrowser
-async function getCountries() {
-  console.log('📡 Fetching country list...');
-  const countries = await fetchWithRetry(`${API_BASE}/countries`);
-  return countries.map(c => ({
-    code: c.iso_3166_1,
-    name: c.name,
-    stationCount: c.stationcount
-  }));
+async function fetchJsonWithFallback(path) {
+  let lastErr = null;
+
+  // 1) Try explicit mirrors with /json prefix (most mirrors)
+  for (const server of SERVERS) {
+    const url = `${server}/json${path}`;
+    try {
+      const res = await tryFetch(url, { headers: { "User-Agent": "GlobeRadioEngine/1.0" } }, 1, 800);
+      return await res.json();
+    } catch (e) {
+      lastErr = e;
+      console.warn(`⚠️  ${server} (with /json) failed: ${e.message}`);
+    }
+  }
+
+  // 2) Try load balancer with and without /json (some setups)
+  try {
+    const url1 = `${LOAD_BALANCER}/json${path}`;
+    const res1 = await tryFetch(url1, { headers: { "User-Agent": "GlobeRadioEngine/1.0" } }, 1, 800);
+    return await res1.json();
+  } catch (e) {
+    lastErr = e;
+    console.warn(`⚠️  ${LOAD_BALANCER}/json failed: ${e.message}`);
+  }
+
+  try {
+    const url2 = `${LOAD_BALANCER}${path}`; // try without /json
+    const res2 = await tryFetch(url2, { headers: { "User-Agent": "GlobeRadioEngine/1.0" } }, 1, 800);
+    return await res2.json();
+  } catch (e) {
+    lastErr = e;
+    console.warn(`⚠️  ${LOAD_BALANCER} (no /json) failed: ${e.message}`);
+  }
+
+  // 3) Last resort: try GitHub raw dump (single large file)
+  try {
+    console.log("ℹ️  Trying GitHub dump fallback...");
+    const res = await tryFetch(GITHUB_DUMP_URL, { headers: { "User-Agent": "GlobeRadioEngine/1.0" } }, 1, 1000);
+    const json = await res.json();
+    if (Array.isArray(json)) return json;
+    throw new Error("GitHub dump did not return an array");
+  } catch (e) {
+    lastErr = e;
+    console.warn(`⚠️  GitHub dump fallback failed: ${e.message}`);
+  }
+
+  throw lastErr ?? new Error("All RadioBrowser servers and fallbacks failed");
 }
 
-// Fetch stations for a specific country
-async function getStationsByCountry(countryCode, limit) {
-  const url = `${API_BASE}/stations/bycountrycodeexact/${countryCode}?limit=${limit}&order=votes&reverse=true`;
-  return fetchWithRetry(url);
-}
-
-// Transform RadioBrowser station to our format
 function transformStation(rb) {
   return {
     id: rb.stationuuid,
-    name: rb.name?.trim() || 'Unknown',
-    url: rb.url_resolved || rb.url,
+    name: rb.name?.trim() || "",
+    url: rb.url_resolved || rb.url || "",
     homepage: rb.homepage || null,
     favicon: rb.favicon || null,
-    country: rb.country || '',
-    countryCode: rb.countrycode || '',
+    country: rb.country || "",
+    countryCode: rb.countrycode || "",
     state: rb.state || null,
     language: rb.language || null,
-    tags: rb.tags?.split(',').map(t => t.trim()).filter(Boolean) || [],
+    tags: (rb.tags || "").split(",").map((t) => t.trim()).filter(Boolean),
     codec: rb.codec || null,
-    bitrate: rb.bitrate || 0,
-    votes: rb.votes || 0,
-    clickCount: rb.clickcount || 0,
-    lastCheckOk: rb.lastcheckok === 1,
-    geo: rb.geo_lat && rb.geo_long ? {
-      lat: rb.geo_lat,
-      lon: rb.geo_long
-    } : null,
+    bitrate: Number(rb.bitrate || 0),
+    votes: Number(rb.votes || 0),
+    clickCount: Number(rb.clickcount || 0),
+    lastCheckOk: rb.lastcheckok === 1 || rb.lastcheckok === true,
+    geo:
+      rb.geo_lat != null && rb.geo_long != null
+        ? { lat: Number(rb.geo_lat), lon: Number(rb.geo_long) }
+        : null,
+    lastChangeTime: rb.changetimestamp || null,
   };
 }
 
-// Validate station data
-function validateStation(station) {
-  if (!station.id) return false;
-  if (!station.name || station.name === 'Unknown') return false;
-  if (!station.url) return false;
-  if (!station.url.startsWith('http')) return false;
+function isValid(s) {
+  if (!s.id) return false;
+  if (!s.name) return false;
+  if (!s.url || !/^https?:\/\//i.test(s.url)) return false;
   return true;
 }
 
-// Progress bar
-function progressBar(current, total, label) {
-  const width = 30;
-  const percent = Math.round((current / total) * 100);
-  const filled = Math.round((current / total) * width);
-  const bar = '█'.repeat(filled) + '░'.repeat(width - filled);
-  process.stdout.write(`\r${bar} ${percent}% ${label}`);
-}
+async function main() {
+  const outRel = "public/data/stations.dump.json";
+  const outPath = join(PROJECT_ROOT, outRel);
+  const outDir = dirname(outPath);
+  if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
 
-// Main import function
-async function importStations() {
-  const options = parseArgs();
-  
-  console.log('📻 Importing radio stations from RadioBrowser...');
-  console.log(`   Limit per country: ${options.limit}`);
-  console.log(`   Min votes: ${options.minVotes}`);
-  console.log(`   Output: ${options.output}`);
-  
-  try {
-    // Get country list
-    let countries = await getCountries();
-    
-    // Filter countries if specified
-    if (options.countries) {
-      countries = countries.filter(c => 
-        options.countries.includes(c.code?.toUpperCase())
-      );
-      console.log(`   Countries: ${options.countries.join(', ')}`);
-    }
-    
-    console.log(`\n🌍 Processing ${countries.length} countries...\n`);
-    
-    const allStations = [];
-    const stats = { total: 0, valid: 0, withGeo: 0, errors: 0 };
-    
-    // Process countries in batches
-    const batchSize = 5;
-    for (let i = 0; i < countries.length; i += batchSize) {
-      const batch = countries.slice(i, i + batchSize);
-      
-      const promises = batch.map(async (country) => {
-        try {
-          const stations = await getStationsByCountry(country.code, options.limit);
-          return { country, stations };
-        } catch (error) {
-          stats.errors++;
-          return { country, stations: [], error: error.message };
-        }
-      });
-      
-      const results = await Promise.all(promises);
-      
-      for (const { country, stations, error } of results) {
-        if (error) {
-          console.log(`\n⚠️  ${country.name}: ${error}`);
-          continue;
-        }
-        
-        for (const rb of stations) {
-          stats.total++;
-          
-          const station = transformStation(rb);
-          
-          // Apply filters
-          if (options.minVotes > 0 && station.votes < options.minVotes) {
-            continue;
-          }
-          
-          if (!validateStation(station)) {
-            continue;
-          }
-          
-          stats.valid++;
-          if (station.geo) stats.withGeo++;
-          
-          allStations.push(station);
-        }
+  // safer page size
+  const pageSize = 10000;
+  let offset = 0;
+  const all = [];
+  let totalFetched = 0;
+
+  // If GitHub fallback returns full array, we will detect it and stop pagination
+  let usedGithubFallback = false;
+
+  for (;;) {
+    const path = `/stations?hidebroken=true&order=stationuuid&reverse=false&limit=${pageSize}&offset=${offset}`;
+
+    let batch;
+    try {
+      batch = await fetchJsonWithFallback(path);
+    } catch (err) {
+      // If the error occurs on the first page, try GitHub dump directly (already attempted inside fetchJsonWithFallback)
+      console.error("❌ Fetch failed:", err.message);
+      if (offset === 0) {
+        // If fetchJsonWithFallback already tried GitHub and returned array, it would have returned earlier.
+        // Here we bail out and write partial file if any.
+        break;
+      } else {
+        break;
       }
-      
-      progressBar(i + batch.length, countries.length, `(${allStations.length} stations)`);
     }
-    
-    console.log('\n');
-    
-    // Create output directory
-    const outputDir = dirname(join(PROJECT_ROOT, options.output));
-    if (!existsSync(outputDir)) {
-      mkdirSync(outputDir, { recursive: true });
+
+    // If fallback returned a full dump (array of all stations), detect and use it
+    if (Array.isArray(batch) && batch.length > pageSize) {
+      // treat as full dump
+      console.log("ℹ️  Received large array (treating as full dump).");
+      usedGithubFallback = true;
+      for (const rb of batch) {
+        const s = transformStation(rb);
+        if (isValid(s)) all.push(s);
+      }
+      totalFetched += batch.length;
+      break;
     }
-    
-    // Write output
-    const outputPath = join(PROJECT_ROOT, options.output);
-    const json = JSON.stringify(allStations, null, 2);
-    writeFileSync(outputPath, json);
-    
-    // Final stats
-    const sizeMB = (Buffer.byteLength(json) / 1024 / 1024).toFixed(2);
-    
-    console.log('✅ Import complete!\n');
-    console.log('📊 Statistics:');
-    console.log(`   Countries processed: ${countries.length}`);
-    console.log(`   Total stations fetched: ${stats.total}`);
-    console.log(`   Valid stations: ${stats.valid}`);
-    console.log(`   With geolocation: ${stats.withGeo}`);
-    console.log(`   Errors: ${stats.errors}`);
-    console.log(`   Output size: ${sizeMB} MB`);
-    console.log(`   Output file: ${outputPath}`);
-    
-  } catch (error) {
-    console.error('\n❌ Import failed:', error.message);
-    process.exit(1);
+
+    if (!Array.isArray(batch) || batch.length === 0) break;
+
+    totalFetched += batch.length;
+
+    for (const rb of batch) {
+      const s = transformStation(rb);
+      if (isValid(s)) all.push(s);
+    }
+
+    console.log(`offset=${offset} fetched=${batch.length} totalValid=${all.length}`);
+    offset += pageSize;
+
+    // safety: avoid infinite loops
+    if (offset > 5_000_000) {
+      console.warn("⚠️  Aborting: offset limit reached");
+      break;
+    }
   }
+
+  // write partial or full result
+  writeFileSync(outPath, JSON.stringify(all, null, 2));
+  console.log(`✅ Done. fetched=${totalFetched} valid=${all.length} -> ${outRel}`);
+  if (usedGithubFallback) console.log("ℹ️  Note: data came from GitHub dump fallback.");
 }
 
-importStations();
+main().catch((e) => {
+  console.error("❌ Fatal:", e);
+  process.exit(1);
+});
