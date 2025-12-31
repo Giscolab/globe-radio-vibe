@@ -1,7 +1,7 @@
 // Component - StationList: display list of enriched radio stations
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { Radio, Play, Pause, Globe, MapPin, Wifi, Loader2, CheckCircle, XCircle } from 'lucide-react';
-import { Station } from '@/engine/types/radio';
+import { Station, normalizeGenre } from '@/engine/types/radio';
 import { usePlayer } from '@/hooks/usePlayer';
 import { useEnrichedStationsSync } from '@/hooks/useEnrichedStation';
 import { QualityBadge } from './QualityBadge';
@@ -9,8 +9,7 @@ import { PopularityIndicator } from './PopularityIndicator';
 import { GenrePills } from './GenrePills';
 import { HealthDot } from './StationHealthBadge';
 import { useRadioStore } from '@/stores/radio.store';
-import { checkStationHealth } from '@/engine/radio/health/healthChecker';
-
+import { checkStationHealth, getHealthTier } from '@/engine/radio/health/healthChecker';
 interface StationListProps {
   stations: Station[];
   isLoading?: boolean;
@@ -20,20 +19,20 @@ export function StationList({ stations, isLoading }: StationListProps) {
   const { currentStation, status, play, toggle } = usePlayer();
   const { setSelectedGenre, stationHealth, setStationHealth } = useRadioStore();
   const enrichedStations = useEnrichedStationsSync(stations);
-
   const [testingIds, setTestingIds] = useState<Set<string>>(new Set());
   const [brokenFavicons, setBrokenFavicons] = useState<Set<string>>(new Set());
 
-  const handleFaviconError = (id: string) => {
-    setBrokenFavicons(prev => new Set(prev).add(id));
-  };
+  const handleFaviconError = useCallback((stationId: string) => {
+    setBrokenFavicons(prev => new Set(prev).add(stationId));
+  }, []);
 
   const handleTestConnection = async (e: React.MouseEvent, station: Station) => {
     e.stopPropagation();
+    
     if (testingIds.has(station.id)) return;
-
+    
     setTestingIds(prev => new Set(prev).add(station.id));
-
+    
     try {
       const url = station.urlResolved || station.url;
       const health = await checkStationHealth(url!);
@@ -47,15 +46,20 @@ export function StationList({ stations, isLoading }: StationListProps) {
     }
   };
 
-  const handleGenreClick = (genre: string) => {
-    setSelectedGenre(genre);
-  };
-
   if (isLoading) {
     return (
-      <div className="p-8 text-center">
-        <Loader2 className="w-8 h-8 mx-auto text-muted-foreground animate-spin mb-4" />
-        <p className="text-muted-foreground">Chargement…</p>
+      <div className="p-4 space-y-3">
+        {[...Array(5)].map((_, i) => (
+          <div key={i} className="neo-raised p-4 animate-pulse">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-muted" />
+              <div className="flex-1 space-y-2">
+                <div className="h-4 bg-muted rounded w-3/4" />
+                <div className="h-3 bg-muted rounded w-1/2" />
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
     );
   }
@@ -70,22 +74,23 @@ export function StationList({ stations, isLoading }: StationListProps) {
     );
   }
 
+  const handleGenreClick = (genre: string) => {
+    setSelectedGenre(genre);
+  };
+
   return (
     <div className="p-4 space-y-2 overflow-y-auto max-h-[calc(100vh-200px)]">
-      {enrichedStations.map(station => {
+      {enrichedStations.map((station) => {
         const isActive = currentStation?.id === station.id;
         const isPlaying = isActive && status === 'playing';
-        const health = stationHealth[station.id];
+        const health = stationHealth[station.id] || null;
 
         return (
-          <div
+          <button
             key={station.id}
-            role="button"
-            tabIndex={0}
             onClick={() => isActive ? toggle() : play(station)}
-            onKeyDown={(e) => e.key === 'Enter' && (isActive ? toggle() : play(station))}
-            className={`neo-raised p-3 cursor-pointer transition hover:scale-[1.01] ${
-              isActive ? 'ring-2 ring-primary' : ''
+            className={`w-full neo-raised p-3 transition-all hover:scale-[1.02] ${
+              isActive ? 'ring-2 ring-primary neo-pressed' : ''
             }`}
             style={{
               borderLeft: station.colors 
@@ -94,7 +99,7 @@ export function StationList({ stations, isLoading }: StationListProps) {
             }}
           >
             <div className="flex items-center gap-3">
-              {/* Icon */}
+              {/* Station icon/favicon */}
               <div 
                 className="neo-circle w-10 h-10 flex items-center justify-center flex-shrink-0 relative"
                 style={{
@@ -114,6 +119,7 @@ export function StationList({ stations, isLoading }: StationListProps) {
                   <Radio className="w-5 h-5 text-primary" />
                 )}
                 
+                {/* Playing indicator */}
                 {isPlaying && (
                   <div className="absolute inset-0 flex items-center justify-center bg-primary/20 rounded-full animate-pulse">
                     <Pause className="w-4 h-4 text-primary" />
@@ -121,8 +127,9 @@ export function StationList({ stations, isLoading }: StationListProps) {
                 )}
               </div>
 
-              {/* Infos */}
+              {/* Station info */}
               <div className="flex-1 min-w-0 text-left">
+                {/* Name + Quality badge + Health */}
                 <div className="flex items-center gap-2">
                   <HealthDot health={health} />
                   <h4 className="font-medium text-foreground truncate text-sm">
@@ -134,14 +141,16 @@ export function StationList({ stations, isLoading }: StationListProps) {
                     tier={station.popularityTier} 
                   />
                 </div>
-
+                
+                {/* Location */}
                 {station.displayLocation && (
                   <div className="flex items-center gap-1 mt-0.5 text-[10px] text-muted-foreground">
                     <MapPin className="w-3 h-3" />
                     <span className="truncate">{station.displayLocation}</span>
                   </div>
                 )}
-
+                
+                {/* Genres */}
                 <div className="mt-1.5">
                   <GenrePills 
                     genres={station.subGenres}
@@ -153,6 +162,7 @@ export function StationList({ stations, isLoading }: StationListProps) {
                   />
                 </div>
                 
+                {/* Bitrate + Codec */}
                 {station.bitrate && (
                   <div className="flex items-center gap-2 mt-1">
                     <span className="text-[10px] text-muted-foreground">
@@ -163,7 +173,7 @@ export function StationList({ stations, isLoading }: StationListProps) {
                 )}
               </div>
 
-              {/* Test */}
+              {/* Test connection button */}
               <button
                 onClick={(e) => handleTestConnection(e, station)}
                 disabled={testingIds.has(station.id)}
@@ -181,7 +191,7 @@ export function StationList({ stations, isLoading }: StationListProps) {
                 )}
               </button>
 
-              {/* Play */}
+              {/* Play button */}
               <div className={`neo-button-primary w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
                 isPlaying ? 'animate-pulse-glow' : ''
               }`}>
@@ -192,7 +202,7 @@ export function StationList({ stations, isLoading }: StationListProps) {
                 )}
               </div>
             </div>
-          </div>
+          </button>
         );
       })}
     </div>

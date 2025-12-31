@@ -23,9 +23,6 @@ class AudioAnalyzer {
   private source: MediaElementAudioSourceNode | null = null;
   private connectedElement: HTMLAudioElement | null = null;
   
-  // Track CORS-blocked elements to avoid retrying
-  private corsBlockedElements: WeakSet<HTMLAudioElement> = new WeakSet();
-  
   // Analysis data - use explicit ArrayBuffer type
   private fftData: Uint8Array;
   private timeDomainData: Uint8Array;
@@ -48,15 +45,9 @@ class AudioAnalyzer {
   private silenceListeners: Set<(isSilent: boolean) => void> = new Set();
 
   /**
-   * Connect to an HTMLAudioElement for analysis (CORS-safe)
+   * Connect to an HTMLAudioElement for analysis
    */
   connect(audioElement: HTMLAudioElement): boolean {
-    // Skip if previously CORS-blocked
-    if (this.corsBlockedElements.has(audioElement)) {
-      logger.debug('AudioAnalyzer', 'Skipping CORS-blocked element');
-      return false;
-    }
-    
     try {
       // Don't reconnect to the same element
       if (this.connectedElement === audioElement && this.analyser) {
@@ -81,17 +72,8 @@ class AudioAnalyzer {
       this.analyser.fftSize = FFT_SIZE;
       this.analyser.smoothingTimeConstant = 0.8;
       
-      // Create source from audio element - may throw on CORS
-      try {
-        this.source = this.audioContext.createMediaElementSource(audioElement);
-      } catch (corsError) {
-        // Mark as CORS-blocked to avoid retrying
-        if (corsError instanceof DOMException) {
-          this.corsBlockedElements.add(audioElement);
-          logger.warn('AudioAnalyzer', 'CORS restriction - element blocked');
-        }
-        throw corsError;
-      }
+      // Create source from audio element
+      this.source = this.audioContext.createMediaElementSource(audioElement);
       
       // Connect: source -> analyser -> destination
       this.source.connect(this.analyser);

@@ -54,29 +54,23 @@ class AudioEngine {
   }
 
   /**
-   * Connect WebAudio analyzer (CORS-safe, silent fail)
+   * Connect WebAudio analyzer to current Howl audio element
    */
   private connectAnalyzer(): void {
     if (!this.howl || this.analyzerConnected) return;
-
+    
     try {
+      // Access Howler's internal audio node
       const sounds = (this.howl as any)._sounds;
-      if (!sounds?.length) return;
-
-      const node = sounds[0]._node as HTMLAudioElement;
-      if (!node) return;
-
-      // Ne pas planter si CORS bloque
-      try {
-        this.analyzerConnected = audioAnalyzer.connect(node);
-        if (this.analyzerConnected) {
-          logger.info('AudioEngine', 'Analyzer connected');
+      if (sounds && sounds.length > 0) {
+        const audioNode = sounds[0]._node as HTMLAudioElement;
+        if (audioNode) {
+          this.analyzerConnected = audioAnalyzer.connect(audioNode);
+          logger.info('AudioEngine', 'WebAudio analyzer connected');
         }
-      } catch {
-        logger.warn('AudioEngine', 'Analyzer blocked by CORS');
       }
-    } catch {
-      // silence volontaire
+    } catch (error) {
+      logger.warn('AudioEngine', `Failed to connect analyzer: ${error}`);
     }
   }
 
@@ -91,12 +85,6 @@ class AudioEngine {
   }
 
   async play(station: Station): Promise<void> {
-    // Skip if already playing this station
-    if (this.state.currentStation?.id === station.id && this.state.status === 'playing') {
-      logger.info('AudioEngine', 'Already playing this station');
-      return;
-    }
-    
     // Stop current playback
     this.stop();
 
@@ -154,8 +142,9 @@ class AudioEngine {
               this.setState({ status: 'playing', error: null });
               playerMetrics.recordPlay(station.id);
               
-              // Connect analyzer after stream stabilizes
-              setTimeout(() => this.connectAnalyzer(), 150);
+              // Connect WebAudio analyzer after playback starts
+              // Small delay to ensure audio node is ready
+              setTimeout(() => this.connectAnalyzer(), 100);
               
               resolve();
             },

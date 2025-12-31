@@ -59,22 +59,9 @@ export function StationsPanel({ onClose }: StationsPanelProps) {
     }
   }, [topStations.length, isLoadingTop, setTopStations, setLoadingTop]);
 
-  // Start health monitor and register stations
+  // Start health monitor and subscribe to updates
   useEffect(() => {
-    const stationsToMonitor = selectedCountry ? stations : topStations;
-    
-    // Don't start monitoring if no stations
-    if (stationsToMonitor.length === 0) return;
-    
     healthMonitor.start(120000); // Check every 2 minutes
-    
-    // Register all stations
-    stationsToMonitor.forEach(station => {
-      const url = station.urlResolved || station.url;
-      if (url) {
-        healthMonitor.registerStation(station.id, url);
-      }
-    });
     
     const unsubscribe = healthMonitor.onUpdate((stationId, health) => {
       setStationHealth(stationId, health);
@@ -82,18 +69,33 @@ export function StationsPanel({ onClose }: StationsPanelProps) {
     
     return () => {
       unsubscribe();
-      healthMonitor.stop();
     };
-  }, [stations, topStations, selectedCountry, setStationHealth]);
+  }, [setStationHealth]);
+
+  // Register stations for health monitoring
+  useEffect(() => {
+    const stationsToMonitor = selectedCountry ? stations : topStations;
+    if (stationsToMonitor.length > 0) {
+      stationsToMonitor.forEach(station => {
+        const url = station.urlResolved || station.url;
+        if (url) {
+          healthMonitor.registerStation(station.id, url);
+        }
+      });
+    }
+  }, [stations, topStations, selectedCountry]);
 
   // Sync embeddings when stations are loaded
   useEffect(() => {
-    if (!stations.length) return;
-    if (hasSynced) return;
-
-    const enriched = stations.map(s => enrichStationSync(s));
-    syncEmbeddings(enriched).finally(() => setHasSynced(true));
-  }, [stations.length, hasSynced]);
+    const stationsToSync = selectedCountry ? stations : topStations;
+    if (stationsToSync.length > 0 && !hasSynced) {
+      const enriched = stationsToSync.map(s => enrichStationSync(s));
+      syncEmbeddings(enriched).then(() => {
+        setHasSynced(true);
+        console.log('[StationsPanel] Embeddings synced');
+      });
+    }
+  }, [stations.length, topStations.length, hasSynced, selectedCountry]);
 
   // Handle ambience selection
   const handleAmbienceSelect = async (ambience: AmbienceType) => {

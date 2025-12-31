@@ -51,29 +51,39 @@ function mapStation(rb: any): Station {
 // ----------------------------------
 async function callRadioProxy(params: Record<string, string>): Promise<any[]> {
   const searchParams = new URLSearchParams(params);
-  const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/radio-proxy?${searchParams}`;
+  
+  const projectUrl = import.meta.env.VITE_SUPABASE_URL;
+  const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  
+  if (!projectUrl || !anonKey) {
+    logger.error("StationService", "Missing Supabase config");
+    throw new Error("Missing Supabase configuration");
+  }
+  
+  const url = `${projectUrl}/functions/v1/radio-proxy?${searchParams.toString()}`;
   
   logger.info("StationService", `Calling proxy: ${url}`);
   
-  try {
-    const res = await fetch(url, {
-      headers: {
-        apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-      }
-    });
+  const response = await fetch(url, {
+    headers: {
+      'Authorization': `Bearer ${anonKey}`,
+      'apikey': anonKey,
+    },
+  });
 
-    if (!res.ok) {
-      logger.error("StationService", `Proxy error: ${res.status}`);
-      return [];
-    }
-
-    const json = await res.json();
-    return Array.isArray(json) ? json : [];
-  } catch (error) {
-    logger.error("StationService", `Fetch failed: ${error}`);
-    return [];
+  if (!response.ok) {
+    const errorText = await response.text();
+    logger.error("StationService", `Proxy error: ${response.status} - ${errorText}`);
+    throw new Error(`Proxy error: ${response.status}`);
   }
+
+  const result = await response.json();
+  
+  if (result.error) {
+    throw new Error(result.error);
+  }
+  
+  return Array.isArray(result) ? result : [];
 }
 
 // ----------------------------------
