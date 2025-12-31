@@ -6,6 +6,7 @@ import { useEnrichedStationsSync } from '@/hooks/useEnrichedStation';
 import { QualityBadge } from './QualityBadge';
 import { PopularityIndicator } from './PopularityIndicator';
 import { GenrePills } from './GenrePills';
+import { HealthDot } from './StationHealthBadge';
 import { useRadioStore } from '@/stores/radio.store';
 
 interface StationListProps {
@@ -15,7 +16,7 @@ interface StationListProps {
 
 export function StationList({ stations, isLoading }: StationListProps) {
   const { currentStation, status, play, toggle } = usePlayer();
-  const { setSelectedGenre } = useRadioStore();
+  const { setSelectedGenre, stationHealth } = useRadioStore();
   const enrichedStations = useEnrichedStationsSync(stations);
 
   if (isLoading) {
@@ -55,6 +56,7 @@ export function StationList({ stations, isLoading }: StationListProps) {
       {enrichedStations.map((station) => {
         const isActive = currentStation?.id === station.id;
         const isPlaying = isActive && status === 'playing';
+        const health = stationHealth[station.id] || null;
 
         return (
           <button
@@ -102,8 +104,9 @@ export function StationList({ stations, isLoading }: StationListProps) {
 
               {/* Station info */}
               <div className="flex-1 min-w-0 text-left">
-                {/* Name + Quality badge */}
+                {/* Name + Quality badge + Health */}
                 <div className="flex items-center gap-2">
+                  <HealthDot health={health} />
                   <h4 className="font-medium text-foreground truncate text-sm">
                     {station.name}
                   </h4>

@@ -1,10 +1,11 @@
-// Engine - Audio Engine (Howler wrapper) with WebAudio integration
+// Engine - Audio Engine (Howler wrapper) with WebAudio integration and health checks
 import { Howl } from 'howler';
 import { logger } from '../core/logger';
 import { Station } from '../types/radio';
 import { retryWithBackoff, RetryConfig } from './retryPolicy';
 import { playerMetrics } from './metrics';
 import { audioAnalyzer } from '../audio/audioAnalyzer';
+import { checkStationHealth, healthHistory } from '../radio/health';
 
 export type PlayerStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'error';
 
@@ -95,6 +96,29 @@ class AudioEngine {
 
     const urls = [station.urlResolved, station.url].filter(Boolean) as string[];
     
+    // Quick health check before playing
+    const primaryUrl = urls[0];
+    const health = await checkStationHealth(primaryUrl, 2000);
+    healthHistory.record({
+      stationId: station.id,
+      ok: health.ok,
+      latency: health.latency,
+      error: health.error
+    });
+    
+    // If primary URL fails, try to find a working one
+    let workingUrl = primaryUrl;
+    if (!health.ok && urls.length > 1) {
+      for (const url of urls.slice(1)) {
+        const altHealth = await checkStationHealth(url, 2000);
+        if (altHealth.ok) {
+          workingUrl = url;
+          logger.info('AudioEngine', `Using fallback URL for ${station.name}`);
+          break;
+        }
+      }
+    }
+    
     const config: RetryConfig = {
       maxAttempts: 3,
       baseDelay: 1000,
@@ -103,7 +127,8 @@ class AudioEngine {
 
     try {
       await retryWithBackoff(async (attempt) => {
-        const url = urls[attempt % urls.length];
+        // Use working URL on first attempt, then cycle through all URLs
+        const url = attempt === 0 ? workingUrl : urls[attempt % urls.length];
         logger.info('AudioEngine', `Playing ${station.name} from ${url} (attempt ${attempt + 1})`);
         
         return new Promise<void>((resolve, reject) => {

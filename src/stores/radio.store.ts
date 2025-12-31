@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Station } from '@/engine/types';
+import type { StationHealth } from '@/engine/radio/health';
 
 export interface PlayRecord {
   station: Station;
@@ -30,6 +31,9 @@ interface RadioState {
   recommendations: Station[];
   isAISearching: boolean;
   
+  // Health
+  stationHealth: Record<string, StationHealth>;
+  
   // Favorites & History
   favorites: Station[];
   history: PlayRecord[];
@@ -56,6 +60,10 @@ interface RadioState {
   setSimilarStations: (stations: Station[]) => void;
   setRecommendations: (stations: Station[]) => void;
   setIsAISearching: (searching: boolean) => void;
+  
+  // Health actions
+  setStationHealth: (id: string, health: StationHealth) => void;
+  getStationHealth: (id: string) => StationHealth | null;
   
   // Favorites actions
   toggleFavorite: (station: Station) => void;
@@ -88,6 +96,9 @@ export const useRadioStore = create<RadioState>((set, get) => ({
   similarStations: [],
   recommendations: [],
   isAISearching: false,
+  
+  // Health state
+  stationHealth: {},
   
   favorites: [],
   history: [],
@@ -221,4 +232,10 @@ export const useRadioStore = create<RadioState>((set, get) => ({
   setSimilarStations: (stations) => set({ similarStations: stations }),
   setRecommendations: (stations) => set({ recommendations: stations }),
   setIsAISearching: (searching) => set({ isAISearching: searching }),
+  
+  // Health actions
+  setStationHealth: (id, health) => set((state) => ({
+    stationHealth: { ...state.stationHealth, [id]: health }
+  })),
+  getStationHealth: (id) => get().stationHealth[id] || null,
 }));
