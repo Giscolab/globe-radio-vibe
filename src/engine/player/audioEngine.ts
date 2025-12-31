@@ -143,8 +143,8 @@ class AudioEngine {
               playerMetrics.recordPlay(station.id);
               
               // Connect WebAudio analyzer after playback starts
-              // Small delay to ensure audio node is ready
-              setTimeout(() => this.connectAnalyzer(), 100);
+              // 500ms delay to ensure audio node is ready and avoid race conditions
+              setTimeout(() => this.connectAnalyzer(), 500);
               
               resolve();
             },
