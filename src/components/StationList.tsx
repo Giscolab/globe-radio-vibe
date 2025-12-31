@@ -112,6 +112,8 @@ export function StationList({ stations, isLoading }: StationListProps) {
                   <img
                     src={station.favicon}
                     alt=""
+                    loading="lazy"
+                    decoding="async"
                     className="w-7 h-7 rounded-full object-cover"
                     onError={() => handleFaviconError(station.id)}
                   />

@@ -86,6 +86,8 @@ export function RecommendationsPanel() {
                   <img
                     src={station.favicon}
                     alt=""
+                    loading="lazy"
+                    decoding="async"
                     className="w-8 h-8 rounded object-cover bg-muted"
                     onError={(e) => {
                       (e.target as HTMLImageElement).src = '';
