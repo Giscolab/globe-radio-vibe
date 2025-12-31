@@ -54,32 +54,29 @@ class AudioEngine {
   }
 
   /**
-   * Connect WebAudio analyzer to current Howl audio element (CORS-safe)
+   * Connect WebAudio analyzer (CORS-safe, silent fail)
    */
   private connectAnalyzer(): void {
     if (!this.howl || this.analyzerConnected) return;
-    
+
     try {
-      // Access Howler's internal audio node
       const sounds = (this.howl as any)._sounds;
-      if (!sounds || sounds.length === 0) return;
-      
-      const audioNode = sounds[0]._node as HTMLAudioElement;
-      if (!audioNode) return;
-      
-      // CORS-safe: wrap in try-catch, ignore failures silently
+      if (!sounds?.length) return;
+
+      const node = sounds[0]._node as HTMLAudioElement;
+      if (!node) return;
+
+      // Ne pas planter si CORS bloque
       try {
-        this.analyzerConnected = audioAnalyzer.connect(audioNode);
+        this.analyzerConnected = audioAnalyzer.connect(node);
         if (this.analyzerConnected) {
-          logger.info('AudioEngine', 'WebAudio analyzer connected');
+          logger.info('AudioEngine', 'Analyzer connected');
         }
-      } catch (corsError) {
-        // MediaElementSource may fail on CORS streams - this is OK
-        logger.warn('AudioEngine', 'WebAudio CORS restriction - visualization disabled');
-        this.analyzerConnected = false;
+      } catch {
+        logger.warn('AudioEngine', 'Analyzer blocked by CORS');
       }
-    } catch (error) {
-      logger.warn('AudioEngine', `Failed to connect analyzer: ${error}`);
+    } catch {
+      // silence volontaire
     }
   }
 
@@ -157,9 +154,8 @@ class AudioEngine {
               this.setState({ status: 'playing', error: null });
               playerMetrics.recordPlay(station.id);
               
-              // Connect WebAudio analyzer after playback starts
-              // Increased delay for stream stabilization before connecting
-              setTimeout(() => this.connectAnalyzer(), 500);
+              // Connect analyzer after stream stabilizes
+              setTimeout(() => this.connectAnalyzer(), 150);
               
               resolve();
             },
