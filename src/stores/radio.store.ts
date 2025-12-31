@@ -11,10 +11,12 @@ export interface PlayRecord {
 interface RadioState {
   // Stations
   stations: Station[];
+  topStations: Station[];
   filteredStations: Station[];
   currentStation: Station | null;
   isPlaying: boolean;
   isLoading: boolean;
+  isLoadingTop: boolean;
   volume: number;
   
   // Search & Filters
@@ -40,9 +42,11 @@ interface RadioState {
   
   // Station actions
   setStations: (stations: Station[]) => void;
+  setTopStations: (stations: Station[]) => void;
   setCurrentStation: (station: Station | null) => void;
   setIsPlaying: (playing: boolean) => void;
   setLoading: (loading: boolean) => void;
+  setLoadingTop: (loading: boolean) => void;
   setVolume: (volume: number) => void;
   
   // Search & Filter actions
@@ -79,10 +83,12 @@ interface RadioState {
 export const useRadioStore = create<RadioState>((set, get) => ({
   // Initial state
   stations: [],
+  topStations: [],
   filteredStations: [],
   currentStation: null,
   isPlaying: false,
   isLoading: false,
+  isLoadingTop: false,
   volume: 0.8,
   searchQuery: '',
   selectedGenre: null,
@@ -109,9 +115,12 @@ export const useRadioStore = create<RadioState>((set, get) => ({
     get().applyFilters();
   },
   
+  setTopStations: (stations) => set({ topStations: stations }),
+  
   setCurrentStation: (station) => set({ currentStation: station }),
   setIsPlaying: (playing) => set({ isPlaying: playing }),
   setLoading: (loading) => set({ isLoading: loading }),
+  setLoadingTop: (loading) => set({ isLoadingTop: loading }),
   setVolume: (volume) => set({ volume }),
 
   // Search & Filter actions
