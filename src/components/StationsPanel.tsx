@@ -96,18 +96,37 @@ export function StationsPanel({ onClose }: StationsPanelProps) {
     }
   }, [stations, topStations, selectedCountry]);
 
-  // Sync embeddings when stations are loaded - deferred to reduce TTI
+  // Sync embeddings when stations are loaded - batched to reduce TBT
   useEffect(() => {
     const stationsToSync = selectedCountry ? stations : topStations;
     if (stationsToSync.length > 0 && !hasSynced) {
       const scheduleTask = window.requestIdleCallback || ((cb: () => void) => setTimeout(cb, 4000));
       
       scheduleTask(() => {
-        const enriched = stationsToSync.map(s => enrichStationSync(s));
-        syncEmbeddings(enriched).then(() => {
-          setHasSynced(true);
-          console.log('[StationsPanel] Embeddings synced');
-        });
+        // Process in batches to avoid blocking main thread
+        const batchSize = 10;
+        const enriched: ReturnType<typeof enrichStationSync>[] = [];
+        let index = 0;
+        
+        const processBatch = () => {
+          const end = Math.min(index + batchSize, stationsToSync.length);
+          for (; index < end; index++) {
+            enriched.push(enrichStationSync(stationsToSync[index]));
+          }
+          
+          if (index < stationsToSync.length) {
+            // Yield to main thread, then continue
+            setTimeout(processBatch, 0);
+          } else {
+            // All done, sync embeddings
+            syncEmbeddings(enriched).then(() => {
+              setHasSynced(true);
+              console.log('[StationsPanel] Embeddings synced');
+            });
+          }
+        };
+        
+        processBatch();
       });
     }
   }, [stations.length, topStations.length, hasSynced, selectedCountry]);
