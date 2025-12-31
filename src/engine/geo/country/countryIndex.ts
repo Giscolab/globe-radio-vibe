@@ -4,6 +4,7 @@ import type { Feature, Polygon, MultiPolygon } from 'geojson';
 import type { CountryData, SpatialIndexItem, GeoBounds, GeoPoint } from '../../types';
 import { calculateBounds, boundsCenter } from '../../core/math';
 import { createLogger } from '../../core/logger';
+import { getAlpha2Code } from './isoMapping';
 
 const log = createLogger('geo:countryIndex');
 
@@ -61,16 +62,21 @@ export class CountryIndex {
       const bounds = calculateBounds(coords);
       const centroid = boundsCenter(bounds);
       
+      // Try to get iso2 from properties first, then from numeric ID mapping
+      const iso2 = feature.properties?.iso_a2 || getAlpha2Code(id);
+      
       const countryData: CountryData = {
         id,
         name,
-        iso2: feature.properties?.iso_a2,
+        iso2,
         iso3: feature.properties?.iso_a3,
         continent: feature.properties?.continent,
         bounds,
         centroid,
         feature: feature as CountryData['feature'],
       };
+      
+      log.debug('Country indexed', { id, name, iso2 });
       
       this.countries.set(id, countryData);
       
