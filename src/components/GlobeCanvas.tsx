@@ -4,6 +4,9 @@ import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { loadWorldAtlas, topoToGeoJson, CountryIndex, findCountryAtPoint, latLonToXYZ, xyzToLatLon } from '@/engine';
 import { useGeoStore } from '@/stores/geo.store';
+import { usePlayer } from '@/hooks/usePlayer';
+import { useStations } from '@/hooks/useStations';
+import { StationsLayer } from './StationsLayer';
 import type { Feature, Polygon, MultiPolygon } from 'geojson';
 
 const GLOBE_RADIUS = 2;
@@ -123,7 +126,12 @@ function GlobePicker({ countryIndex }: GlobePickerProps) {
 function GlobeScene() {
   const [features, setFeatures] = useState<Feature<Polygon | MultiPolygon>[]>([]);
   const [countryIndex, setCountryIndex] = useState<CountryIndex | null>(null);
-  const { setLoading, setError } = useGeoStore();
+  const { setLoading, setError, selectedCountry } = useGeoStore();
+  
+  // Get stations and player state for visualization
+  const { stations } = useStations(selectedCountry?.iso2 ?? null);
+  const { currentStation, status } = usePlayer();
+  const isPlaying = status === 'playing';
 
   useEffect(() => {
     async function loadGeo() {
@@ -155,6 +163,15 @@ function GlobeScene() {
       {features.length > 0 && countryIndex && (
         <Borders features={features} countryIndex={countryIndex} />
       )}
+      
+      {/* Stations layer with audio-reactive pulsing */}
+      <StationsLayer 
+        stations={stations}
+        currentStationId={currentStation?.id}
+        isPlaying={isPlaying}
+        globeRadius={GLOBE_RADIUS}
+      />
+      
       <GlobePicker countryIndex={countryIndex} />
       <OrbitControls enablePan={false} minDistance={3} maxDistance={10} rotateSpeed={0.5} />
     </>
