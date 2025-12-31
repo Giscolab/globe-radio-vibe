@@ -1,17 +1,24 @@
 // Engine - Media: Color extraction from favicon images using Canvas API
 import type { ExtractedColors } from '@/engine/types/radio';
+import { faviconColorCache } from './faviconColorCache';
 
-// In-memory cache for extracted colors
-const colorCache = new Map<string, ExtractedColors>();
+// In-memory cache for session (fallback)
+const sessionCache = new Map<string, ExtractedColors>();
 
 /**
  * Extract dominant colors from a favicon URL using Canvas API
- * Uses a simplified color quantization algorithm
+ * Uses persistent cache with 7-day TTL + session memory cache
  */
 export async function extractColors(faviconUrl: string): Promise<ExtractedColors | null> {
-  // Check cache first
-  if (colorCache.has(faviconUrl)) {
-    return colorCache.get(faviconUrl)!;
+  // Check persistent cache first
+  const cachedColors = faviconColorCache.get(faviconUrl);
+  if (cachedColors) {
+    return cachedColors;
+  }
+  
+  // Check session cache
+  if (sessionCache.has(faviconUrl)) {
+    return sessionCache.get(faviconUrl)!;
   }
 
   try {
@@ -19,12 +26,14 @@ export async function extractColors(faviconUrl: string): Promise<ExtractedColors
     const colors = extractColorsFromImage(img);
     
     if (colors) {
-      colorCache.set(faviconUrl, colors);
+      // Store in both caches
+      faviconColorCache.set(faviconUrl, colors);
+      sessionCache.set(faviconUrl, colors);
     }
     
     return colors;
   } catch (error) {
-    console.warn(`Failed to extract colors from ${faviconUrl}:`, error);
+    // Fail silently - color extraction is optional
     return null;
   }
 }
@@ -149,15 +158,16 @@ function rgbToHex(r: number, g: number, b: number): string {
 }
 
 /**
- * Clear the color cache
+ * Clear the color cache (both persistent and session)
  */
 export function clearColorCache(): void {
-  colorCache.clear();
+  sessionCache.clear();
+  faviconColorCache.clear();
 }
 
 /**
- * Get cache size
+ * Get cache size (session + persistent)
  */
 export function getColorCacheSize(): number {
-  return colorCache.size;
+  return sessionCache.size + faviconColorCache.size();
 }
