@@ -66,6 +66,23 @@ class Logger {
     this.listeners.forEach(l => l(entry));
   }
 
+  // Direct logging methods
+  debug(module: string, message: string, data?: unknown): void {
+    this.log('debug', module, message, data);
+  }
+
+  info(module: string, message: string, data?: unknown): void {
+    this.log('info', module, message, data);
+  }
+
+  warn(module: string, message: string, data?: unknown): void {
+    this.log('warn', module, message, data);
+  }
+
+  error(module: string, message: string, data?: unknown): void {
+    this.log('error', module, message, data);
+  }
+
   createModuleLogger(module: string) {
     return {
       debug: (message: string, data?: unknown) => this.log('debug', module, message, data),
