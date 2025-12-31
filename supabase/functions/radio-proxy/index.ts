@@ -5,18 +5,14 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const RADIOBROWSER_SERVERS = [
-  'de1.api.radio-browser.info',
-  'nl1.api.radio-browser.info', 
-  'at1.api.radio-browser.info',
-];
+// Use the official load-balanced API
+const RADIOBROWSER_BASE = 'https://all.api.radio-browser.info';
 
 async function fetchWithRetry(endpoint: string, maxRetries = 3): Promise<Response> {
   let lastError: Error | null = null;
   
   for (let attempt = 0; attempt < maxRetries; attempt++) {
-    const server = RADIOBROWSER_SERVERS[attempt % RADIOBROWSER_SERVERS.length];
-    const url = `https://${server}${endpoint}`;
+    const url = `${RADIOBROWSER_BASE}${endpoint}`;
     
     try {
       console.log(`[radio-proxy] Attempt ${attempt + 1}: ${url}`);
@@ -42,6 +38,10 @@ async function fetchWithRetry(endpoint: string, maxRetries = 3): Promise<Respons
     } catch (error) {
       lastError = error as Error;
       console.error(`[radio-proxy] Attempt ${attempt + 1} failed:`, error);
+      // Wait before retry
+      if (attempt < maxRetries - 1) {
+        await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+      }
     }
   }
   
