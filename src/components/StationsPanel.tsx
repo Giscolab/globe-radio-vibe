@@ -1,10 +1,24 @@
-// Component - StationsPanel: side panel for country stations
-import { X, Radio, RefreshCw } from 'lucide-react';
+// Component - StationsPanel: side panel with tabs for stations, favorites, history
+import { useState } from 'react';
+import { X, Radio, RefreshCw, Heart, History } from 'lucide-react';
 import { useGeoStore } from '@/stores/geo.store';
 import { useStations } from '@/hooks/useStations';
 import { StationList } from './StationList';
+import { FavoritesPanel } from './FavoritesPanel';
+import { HistoryPanel } from './HistoryPanel';
+import { SearchBar } from './SearchBar';
+import { FilterPanel } from './FilterPanel';
+
+type TabId = 'stations' | 'favorites' | 'history';
+
+const TABS: { id: TabId; label: string; icon: typeof Radio }[] = [
+  { id: 'stations', label: 'Stations', icon: Radio },
+  { id: 'favorites', label: 'Favoris', icon: Heart },
+  { id: 'history', label: 'Historique', icon: History },
+];
 
 export function StationsPanel() {
+  const [activeTab, setActiveTab] = useState<TabId>('stations');
   const { selectedCountry, setSelectedCountry } = useGeoStore();
   const { stations, isLoading, isFetching, refetch } = useStations(selectedCountry?.iso2 ?? null);
 
@@ -48,9 +62,46 @@ export function StationsPanel() {
         </div>
       </div>
 
-      {/* Station list */}
+      {/* Tabs */}
+      <div className="flex border-b border-border/50">
+        {TABS.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-all ${
+                isActive 
+                  ? 'text-primary border-b-2 border-primary bg-primary/5' 
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+              }`}
+            >
+              <Icon className="w-4 h-4" />
+              <span className="hidden sm:inline">{tab.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Search & Filters (only for stations tab) */}
+      {activeTab === 'stations' && (
+        <>
+          <div className="p-4 border-b border-border/50">
+            <SearchBar placeholder="Rechercher une station..." />
+          </div>
+          <FilterPanel />
+        </>
+      )}
+
+      {/* Tab content */}
       <div className="flex-1 overflow-hidden">
-        <StationList stations={stations} isLoading={isLoading} />
+        {activeTab === 'stations' && (
+          <StationList stations={stations} isLoading={isLoading} />
+        )}
+        {activeTab === 'favorites' && <FavoritesPanel />}
+        {activeTab === 'history' && <HistoryPanel />}
       </div>
     </div>
   );
