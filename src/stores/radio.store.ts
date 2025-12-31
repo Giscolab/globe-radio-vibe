@@ -1,4 +1,4 @@
-import create from 'zustand';
+import { create } from 'zustand';
 import type { Station } from '@/engine/types';
 
 export interface PlayRecord {
@@ -20,7 +20,15 @@ interface RadioState {
   searchQuery: string;
   selectedGenre: string | null;
   selectedBitrate: number | null;
+  selectedQuality: string | null;
   onlineOnly: boolean;
+  
+  // AI Search
+  aiSearchMode: 'text' | 'smart';
+  aiSearchResults: Station[];
+  similarStations: Station[];
+  recommendations: Station[];
+  isAISearching: boolean;
   
   // Favorites & History
   favorites: Station[];
@@ -37,9 +45,17 @@ interface RadioState {
   setSearchQuery: (query: string) => void;
   setSelectedGenre: (genre: string | null) => void;
   setSelectedBitrate: (bitrate: number | null) => void;
+  setSelectedQuality: (quality: string | null) => void;
   setOnlineOnly: (online: boolean) => void;
   applyFilters: () => void;
   clearFilters: () => void;
+  
+  // AI Search actions
+  setAISearchMode: (mode: 'text' | 'smart') => void;
+  setAISearchResults: (stations: Station[]) => void;
+  setSimilarStations: (stations: Station[]) => void;
+  setRecommendations: (stations: Station[]) => void;
+  setIsAISearching: (searching: boolean) => void;
   
   // Favorites actions
   toggleFavorite: (station: Station) => void;
@@ -65,6 +81,14 @@ export const useRadioStore = create<RadioState>((set, get) => ({
   selectedBitrate: null,
   selectedQuality: null,
   onlineOnly: false,
+  
+  // AI Search state
+  aiSearchMode: 'text',
+  aiSearchResults: [],
+  similarStations: [],
+  recommendations: [],
+  isAISearching: false,
+  
   favorites: [],
   history: [],
 
@@ -190,4 +214,11 @@ export const useRadioStore = create<RadioState>((set, get) => ({
   clearHistory: () => set({ history: [] }),
   
   setHistory: (history) => set({ history }),
+  
+  // AI Search actions
+  setAISearchMode: (mode) => set({ aiSearchMode: mode }),
+  setAISearchResults: (stations) => set({ aiSearchResults: stations }),
+  setSimilarStations: (stations) => set({ similarStations: stations }),
+  setRecommendations: (stations) => set({ recommendations: stations }),
+  setIsAISearching: (searching) => set({ isAISearching: searching }),
 }));
