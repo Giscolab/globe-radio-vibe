@@ -6,6 +6,10 @@ export {
   isInitialized,
   closeDatabase,
   deleteDatabase,
+  vacuumDatabase,
+  checkIntegrity,
+  analyzeDatabase,
+  getDatabaseStats,
   type SqliteDatabase,
   type StorageMode,
 } from './sqlite/db';
