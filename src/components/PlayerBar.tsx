@@ -54,6 +54,9 @@ export function PlayerBar() {
               src={currentStation.favicon} 
               alt="" 
               className="w-10 h-10 rounded-full object-cover relative z-10" 
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = 'none';
+              }}
             />
           ) : (
             <Radio className="w-6 h-6 text-primary relative z-10" />
