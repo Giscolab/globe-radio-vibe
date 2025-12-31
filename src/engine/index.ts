@@ -9,3 +9,5 @@ export { CountryIndex } from './geo/country/countryIndex';
 export { findCountryAtPoint, pointInCountry } from './geo/country/containsCountry';
 export { StationCluster } from './geo/clustering/stationCluster';
 export { geoToSphere, sphereToGeo, projectCoordinatesToSphere } from './geo/projection/lonLat';
+export * from './radio';
+export * from './player';
