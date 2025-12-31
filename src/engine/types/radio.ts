@@ -1,6 +1,18 @@
 // Engine types - Radio module
 import { z } from 'zod';
 
+// Quality tier enum
+export const QualityTierSchema = z.enum(['low', 'medium', 'high', 'hd']);
+export type QualityTier = z.infer<typeof QualityTierSchema>;
+
+// Extracted colors schema
+export const ExtractedColorsSchema = z.object({
+  dominant: z.string(),
+  secondary: z.string(),
+  isDark: z.boolean(),
+});
+export type ExtractedColors = z.infer<typeof ExtractedColorsSchema>;
+
 // Zod schemas for validation
 export const StationSchema = z.object({
   id: z.string().min(1),
@@ -29,6 +41,30 @@ export const StationSchema = z.object({
 });
 
 export type Station = z.infer<typeof StationSchema>;
+
+// Enriched station with additional computed fields
+export const EnrichedStationSchema = StationSchema.extend({
+  // Color extraction from favicon
+  colors: ExtractedColorsSchema.optional(),
+  // Normalized popularity score 0-100
+  popularityScore: z.number().min(0).max(100).default(0),
+  // Popularity tier label
+  popularityTier: z.enum(['underground', 'growing', 'popular', 'trending']).optional(),
+  // Quality tier based on bitrate + codec
+  qualityTier: QualityTierSchema.default('medium'),
+  // Sub-genres derived from tags
+  subGenres: z.array(z.string()).default([]),
+  // Primary genre (normalized)
+  primaryGenre: z.string().optional(),
+  // Parsed location
+  city: z.string().optional(),
+  region: z.string().optional(),
+  displayLocation: z.string().optional(),
+  // Verification status
+  isVerified: z.boolean().default(false),
+});
+
+export type EnrichedStation = z.infer<typeof EnrichedStationSchema>;
 
 export const StationListSchema = z.array(StationSchema);
 

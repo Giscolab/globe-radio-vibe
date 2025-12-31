@@ -1,26 +1,22 @@
-// Component - StationList: display list of radio stations
-import { Radio, Play, Pause, Globe, Music } from 'lucide-react';
+// Component - StationList: display list of enriched radio stations
+import { Radio, Play, Pause, Globe, MapPin } from 'lucide-react';
 import { Station, normalizeGenre } from '@/engine/types/radio';
 import { usePlayer } from '@/hooks/usePlayer';
+import { useEnrichedStationsSync } from '@/hooks/useEnrichedStation';
+import { QualityBadge } from './QualityBadge';
+import { PopularityIndicator } from './PopularityIndicator';
+import { GenrePills } from './GenrePills';
+import { useRadioStore } from '@/stores/radio.store';
 
 interface StationListProps {
   stations: Station[];
   isLoading?: boolean;
 }
 
-const genreColors: Record<string, string> = {
-  pop: 'bg-genre-pop/20 text-genre-pop',
-  rock: 'bg-genre-rock/20 text-genre-rock',
-  jazz: 'bg-genre-jazz/20 text-genre-jazz',
-  classical: 'bg-genre-classical/20 text-genre-classical',
-  electronic: 'bg-genre-electronic/20 text-genre-electronic',
-  hiphop: 'bg-genre-hiphop/20 text-genre-hiphop',
-  country: 'bg-genre-country/20 text-genre-country',
-  other: 'bg-muted text-muted-foreground',
-};
-
 export function StationList({ stations, isLoading }: StationListProps) {
   const { currentStation, status, play, toggle } = usePlayer();
+  const { setSelectedGenre } = useRadioStore();
+  const enrichedStations = useEnrichedStationsSync(stations);
 
   if (isLoading) {
     return (
@@ -50,12 +46,15 @@ export function StationList({ stations, isLoading }: StationListProps) {
     );
   }
 
+  const handleGenreClick = (genre: string) => {
+    setSelectedGenre(genre);
+  };
+
   return (
     <div className="p-4 space-y-2 overflow-y-auto max-h-[calc(100vh-200px)]">
-      {stations.map((station) => {
+      {enrichedStations.map((station) => {
         const isActive = currentStation?.id === station.id;
         const isPlaying = isActive && status === 'playing';
-        const genre = normalizeGenre(station.tags);
 
         return (
           <button
@@ -64,10 +63,22 @@ export function StationList({ stations, isLoading }: StationListProps) {
             className={`w-full neo-raised p-3 transition-all hover:scale-[1.02] ${
               isActive ? 'ring-2 ring-primary neo-pressed' : ''
             }`}
+            style={{
+              borderLeft: station.colors 
+                ? `3px solid ${station.colors.dominant}` 
+                : undefined,
+            }}
           >
             <div className="flex items-center gap-3">
               {/* Station icon/favicon */}
-              <div className="neo-circle w-10 h-10 flex items-center justify-center flex-shrink-0 relative">
+              <div 
+                className="neo-circle w-10 h-10 flex items-center justify-center flex-shrink-0 relative"
+                style={{
+                  background: station.colors 
+                    ? `linear-gradient(135deg, ${station.colors.dominant}20, ${station.colors.secondary}20)` 
+                    : undefined,
+                }}
+              >
                 {station.favicon ? (
                   <img
                     src={station.favicon}
@@ -91,15 +102,46 @@ export function StationList({ stations, isLoading }: StationListProps) {
 
               {/* Station info */}
               <div className="flex-1 min-w-0 text-left">
-                <h4 className="font-medium text-foreground truncate text-sm">{station.name}</h4>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${genreColors[genre] || genreColors.other}`}>
-                    {genre}
-                  </span>
-                  {station.bitrate && (
-                    <span className="text-xs text-muted-foreground">{station.bitrate} kbps</span>
-                  )}
+                {/* Name + Quality badge */}
+                <div className="flex items-center gap-2">
+                  <h4 className="font-medium text-foreground truncate text-sm">
+                    {station.name}
+                  </h4>
+                  <QualityBadge tier={station.qualityTier} />
+                  <PopularityIndicator 
+                    score={station.popularityScore} 
+                    tier={station.popularityTier} 
+                  />
                 </div>
+                
+                {/* Location */}
+                {station.displayLocation && (
+                  <div className="flex items-center gap-1 mt-0.5 text-[10px] text-muted-foreground">
+                    <MapPin className="w-3 h-3" />
+                    <span className="truncate">{station.displayLocation}</span>
+                  </div>
+                )}
+                
+                {/* Genres */}
+                <div className="mt-1.5">
+                  <GenrePills 
+                    genres={station.subGenres}
+                    primaryGenre={station.primaryGenre}
+                    max={2}
+                    onGenreClick={handleGenreClick}
+                    size="sm"
+                  />
+                </div>
+                
+                {/* Bitrate + Codec */}
+                {station.bitrate && (
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-[10px] text-muted-foreground">
+                      {station.bitrate} kbps
+                      {station.codec && ` • ${station.codec.toUpperCase()}`}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Play button */}
