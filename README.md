@@ -1,73 +1,259 @@
-# Welcome to your Lovable project
+# 🌍 Globe Radio Engine
 
-## Project info
+Application de radio mondiale interactive avec globe 3D, permettant d'explorer et d'écouter des stations radio du monde entier.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+![Globe Radio Engine](https://img.shields.io/badge/React-18-blue) ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue) ![Three.js](https://img.shields.io/badge/Three.js-0.160-green)
 
-## How can I edit this code?
+## ✨ Fonctionnalités
 
-There are several ways of editing your application.
+- 🌐 **Globe 3D interactif** - Navigation fluide avec rotation et zoom
+- 📻 **50 000+ stations** - Données RadioBrowser en temps réel
+- 🎵 **Lecteur audio** - Streaming avec retry automatique
+- ❤️ **Favoris** - Sauvegardez vos stations préférées
+- 📜 **Historique** - Retrouvez vos écoutes récentes
+- 🔍 **Recherche & filtres** - Par genre, bitrate, pays
+- 💾 **Local-first** - Persistance SQLite WASM (OPFS)
+- 🎨 **Design neumorphique** - Interface moderne et élégante
 
-**Use Lovable**
+## 🚀 Démarrage rapide
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+```bash
+# Installation des dépendances
+npm install
 
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# Lancement du serveur de développement
 npm run dev
+
+# Build de production
+npm run build
+
+# Tests
+npm run test
 ```
 
-**Edit a file directly in GitHub**
+## 🏗️ Architecture
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+```
+src/
+├── engine/              # Logique métier (TypeScript pur, sans React)
+│   ├── core/            # Utilitaires (logger, math, errors)
+│   ├── geo/             # Géographie
+│   │   ├── clustering/  # Supercluster pour 50k+ stations
+│   │   ├── country/     # Index pays, point-in-polygon
+│   │   ├── projection/  # Conversion lon/lat → 3D
+│   │   └── topo/        # Chargement TopoJSON/GeoJSON
+│   ├── player/          # Moteur audio
+│   │   ├── audioEngine  # Wrapper Howler.js
+│   │   ├── retryPolicy  # Retry exponentiel
+│   │   └── metrics      # Statistiques d'écoute
+│   ├── radio/           # Service stations
+│   │   ├── sources/     # RadioBrowser API
+│   │   └── repository/  # Cache et validation
+│   ├── storage/         # Persistance
+│   │   ├── sqlite/      # SQLite WASM + migrations
+│   │   └── export/      # Import/Export .db
+│   └── types/           # Types partagés
+├── components/          # Composants React
+│   ├── GlobeCanvas      # Canvas Three.js
+│   ├── StationsPanel    # Panel latéral avec tabs
+│   ├── PlayerBar        # Barre de lecture
+│   ├── StationsLayer    # Points stations (InstancedMesh)
+│   ├── ClusterMarker    # Marqueurs clusters
+│   ├── FavoritesPanel   # Liste des favoris
+│   ├── HistoryPanel     # Historique d'écoute
+│   ├── SearchBar        # Barre de recherche
+│   └── FilterPanel      # Filtres genre/bitrate
+├── hooks/               # Hooks personnalisés
+│   ├── useStations      # Chargement stations par pays
+│   ├── useFavorites     # Gestion favoris + SQLite
+│   ├── useHistory       # Gestion historique + SQLite
+│   ├── useClusteredStations  # Clustering dynamique
+│   └── useStationSearch # Recherche + filtres
+├── stores/              # État global (Zustand)
+│   ├── radio.store      # Stations, playback, favoris
+│   └── geo.store        # Pays sélectionné, état globe
+└── pages/               # Pages de l'application
+```
 
-**Use GitHub Codespaces**
+### Principes architecturaux
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+1. **Séparation Engine/App** - L'engine est en TypeScript pur sans dépendance React
+2. **Local-first** - SQLite WASM avec OPFS pour persistance durable
+3. **Performance** - InstancedMesh pour 50k+ stations, supercluster pour clustering
+4. **Design System** - Neumorphisme cohérent via CSS variables
 
-## What technologies are used for this project?
+### Flux de données
 
-This project is built with:
+```
+RadioBrowser API → StationService → SQLite → Zustand Store → React Components
+       ↑                                           ↓
+   Validation Zod                           Three.js Globe
+```
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## 🛠️ Technologies
 
-## How can I deploy this project?
+| Catégorie | Technologies |
+|-----------|-------------|
+| **Frontend** | React 18, TypeScript, Tailwind CSS |
+| **3D** | Three.js, React Three Fiber, React Three Drei |
+| **Audio** | Howler.js |
+| **Storage** | SQLite WASM (@sqlite.org/sqlite-wasm) |
+| **État** | Zustand, TanStack Query |
+| **API** | RadioBrowser |
+| **Validation** | Zod |
+| **Géo** | d3-geo, topojson-client, supercluster |
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+## 📦 Scripts CLI
 
-## Can I connect a custom domain to my Lovable project?
+### build-geo.mjs
 
-Yes, you can!
+Construit les données géographiques optimisées depuis world-atlas.
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+```bash
+node scripts/build-geo.mjs [options]
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+Options:
+  --resolution <110m|50m|10m>  Résolution carte (défaut: 110m)
+  --output <path>              Dossier sortie (défaut: public/geo)
+  --countries <codes>          Codes ISO séparés par virgule
+  --simplify <factor>          Facteur simplification 0-1 (défaut: 0.01)
+
+Exemples:
+  node scripts/build-geo.mjs
+  node scripts/build-geo.mjs --resolution 50m --countries FR,DE,ES
+```
+
+### import-stations.mjs
+
+Importe les stations depuis l'API RadioBrowser.
+
+```bash
+node scripts/import-stations.mjs [options]
+
+Options:
+  --countries <codes>   Codes ISO (défaut: tous)
+  --limit <n>           Max stations par pays (défaut: 1000)
+  --output <path>       Fichier sortie (défaut: public/data/stations.json)
+  --min-votes <n>       Votes minimum (défaut: 0)
+
+Exemples:
+  node scripts/import-stations.mjs --countries FR,US,JP --limit 500
+  node scripts/import-stations.mjs --min-votes 10
+```
+
+### validate-data.mjs
+
+Valide les données GeoJSON et stations.
+
+```bash
+node scripts/validate-data.mjs [options]
+
+Options:
+  --geo <path>       Fichier GeoJSON (défaut: public/geo/world.json)
+  --stations <path>  Fichier stations (défaut: public/data/stations.json)
+  --strict           Erreur sur warning
+  --verbose          Affichage détaillé
+
+Exemples:
+  node scripts/validate-data.mjs --verbose
+  node scripts/validate-data.mjs --strict
+```
+
+## 🗄️ Base de données
+
+### Schéma SQLite
+
+```sql
+-- Stations
+CREATE TABLE stations (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  url TEXT NOT NULL,
+  country_code TEXT,
+  lat REAL, lon REAL,
+  genre TEXT,
+  bitrate INTEGER,
+  data TEXT  -- JSON complet
+);
+
+-- Favoris
+CREATE TABLE favorites (
+  station_id TEXT PRIMARY KEY,
+  added_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Historique d'écoute
+CREATE TABLE play_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  station_id TEXT NOT NULL,
+  played_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  duration_seconds INTEGER DEFAULT 0
+);
+
+-- Paramètres
+CREATE TABLE settings (
+  key TEXT PRIMARY KEY,
+  value TEXT
+);
+```
+
+### Export/Import
+
+```typescript
+import { exportDatabase, importDatabase } from '@/engine/storage';
+
+// Export vers fichier .db
+const blob = await exportDatabase();
+
+// Import depuis fichier
+await importDatabase(file);
+```
+
+## 🧪 Tests
+
+```bash
+# Lancer tous les tests
+npm run test
+
+# Tests avec couverture
+npm run test -- --coverage
+
+# Tests en mode watch
+npm run test -- --watch
+```
+
+### Structure des tests
+
+```
+src/engine/
+├── geo/__tests__/
+│   └── countryIndex.test.ts
+├── radio/__tests__/
+│   └── stationService.test.ts
+├── player/__tests__/
+│   └── audioEngine.test.ts
+└── storage/__tests__/
+    └── db.test.ts
+```
+
+## 📄 Documentation
+
+- [Architecture détaillée](docs/ARCHITECTURE.md)
+- [Modèle de données](docs/DATA_MODEL.md)
+
+## 🚢 Déploiement
+
+### Via Lovable
+
+Cliquez sur **Share → Publish** dans l'interface Lovable.
+
+### Auto-hébergement
+
+```bash
+npm run build
+# Servir le dossier dist/ avec n'importe quel serveur statique
+```
+
+## 📝 Licence
+
+MIT
