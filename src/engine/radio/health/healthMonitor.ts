@@ -104,15 +104,20 @@ class HealthMonitor {
   }
 
   /**
-   * Check all monitored stations
+   * Check all monitored stations (prioritized: current, favorites, then others)
+   * Limits total checks to avoid overwhelming the network
    */
   private async checkAll(): Promise<void> {
     const stations = Array.from(this.monitoredStations.values());
     
+    // Limit to prevent excessive checks
+    const MAX_CHECKS_PER_CYCLE = 20;
+    const stationsToCheck = stations.slice(0, MAX_CHECKS_PER_CYCLE);
+    
     // Check in parallel with concurrency limit
     const CONCURRENCY = 5;
-    for (let i = 0; i < stations.length; i += CONCURRENCY) {
-      const batch = stations.slice(i, i + CONCURRENCY);
+    for (let i = 0; i < stationsToCheck.length; i += CONCURRENCY) {
+      const batch = stationsToCheck.slice(i, i + CONCURRENCY);
       await Promise.all(
         batch.map(async (station) => {
           try {

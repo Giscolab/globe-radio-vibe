@@ -1,6 +1,7 @@
 // Component - StationsLayer: instanced rendering of station points on globe
 // Supports audio-reactive pulsing for active station
-import { useRef, useMemo, useEffect } from 'react';
+// OPTIMIZED: Uses refs for audio data to avoid rerenders
+import { useRef, useMemo, useEffect, memo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { Station, normalizeGenre } from '@/engine/types/radio';
@@ -29,8 +30,11 @@ const GENRE_COLORS: Record<string, THREE.Color> = {
 const POINT_SIZE = 0.015;
 const ACTIVE_SCALE = 2.5;
 const PEAK_SCALE_BOOST = 1.5;
+const TARGET_FPS = 30;
+const FRAME_INTERVAL = 1000 / TARGET_FPS;
 
-export function StationsLayer({ 
+// Memoized component to prevent unnecessary rerenders
+export const StationsLayer = memo(function StationsLayer({ 
   stations, 
   currentStationId, 
   isPlaying = false,
@@ -42,9 +46,10 @@ export function StationsLayer({
   const dummy = useMemo(() => new THREE.Object3D(), []);
   const activeIndexRef = useRef<number>(-1);
   const timeRef = useRef(0);
+  const lastFrameTimeRef = useRef(0);
   
-  // Get audio volume for reactive animations
-  const { volume: audioVolume, peak } = useAudioVolume(isPlaying);
+  // Get audio volume refs for reactive animations (no rerenders)
+  const { volumeRef, peakRef } = useAudioVolume(isPlaying);
 
   // Filter stations with valid geo coordinates
   const geoStations = useMemo(() => {
@@ -112,11 +117,20 @@ export function StationsLayer({
     }
   }, [geoStations, currentStationId, globeRadius, dummy]);
 
-  // Animate active station with audio reactivity
-  useFrame((_, delta) => {
+  // Animate active station with audio reactivity (throttled to 30 FPS)
+  useFrame((state, delta) => {
     if (!meshRef.current) return;
 
+    // Throttle updates to target FPS
+    const now = state.clock.elapsedTime * 1000;
+    if (now - lastFrameTimeRef.current < FRAME_INTERVAL) return;
+    lastFrameTimeRef.current = now;
+
     timeRef.current += delta;
+    
+    // Read audio values from refs (no rerender needed)
+    const audioVolume = volumeRef.current;
+    const peak = peakRef.current;
     
     // Animate active station marker
     if (activeIndexRef.current >= 0) {
@@ -126,7 +140,7 @@ export function StationsLayer({
       // Base pulse animation
       const basePulse = 1 + Math.sin(timeRef.current * 4) * 0.2;
       
-      // Audio-reactive scaling
+      // Audio-reactive scaling (smoothed)
       const audioScale = isPlaying ? 1 + audioVolume * 0.5 : 1;
       const peakBoost = peak ? PEAK_SCALE_BOOST : 1;
       
@@ -186,4 +200,5 @@ export function StationsLayer({
       )}
     </>
   );
-}
+});
+

@@ -77,25 +77,47 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
 
 /**
  * Simplified hook that only returns volume and peak for performance
+ * Uses refs to avoid rerenders - consumers should use useFrame or similar
  */
 export function useAudioVolume(enabled: boolean = true) {
+  const volumeRef = useRef(0);
+  const peakRef = useRef(false);
   const [volume, setVolume] = useState(0);
   const [peak, setPeak] = useState(false);
   const animationRef = useRef<number | null>(null);
+  const lastUpdateRef = useRef(0);
+  
+  // Throttle to 30 FPS for performance
+  const FRAME_INTERVAL = 1000 / 30;
   
   useEffect(() => {
     if (!enabled) {
+      volumeRef.current = 0;
+      peakRef.current = false;
       setVolume(0);
       setPeak(false);
       return;
     }
     
-    const update = () => {
-      if (audioAnalyzer.isConnected()) {
-        const data = audioAnalyzer.getAnalysis();
-        setVolume(data.volume);
-        setPeak(data.peak);
+    const update = (timestamp: number) => {
+      const elapsed = timestamp - lastUpdateRef.current;
+      
+      if (elapsed >= FRAME_INTERVAL) {
+        lastUpdateRef.current = timestamp - (elapsed % FRAME_INTERVAL);
+        
+        if (audioAnalyzer.isConnected()) {
+          const data = audioAnalyzer.getAnalysis();
+          volumeRef.current = data.volume;
+          peakRef.current = data.peak;
+          
+          // Only update state if values changed significantly
+          if (Math.abs(data.volume - volume) > 0.02 || data.peak !== peak) {
+            setVolume(data.volume);
+            setPeak(data.peak);
+          }
+        }
       }
+      
       animationRef.current = requestAnimationFrame(update);
     };
     
@@ -108,5 +130,5 @@ export function useAudioVolume(enabled: boolean = true) {
     };
   }, [enabled]);
   
-  return { volume, peak };
+  return { volume, peak, volumeRef, peakRef };
 }
