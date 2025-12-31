@@ -1,5 +1,6 @@
 // Component - StationList: display list of enriched radio stations
-import { Radio, Play, Pause, Globe, MapPin } from 'lucide-react';
+import { useState } from 'react';
+import { Radio, Play, Pause, Globe, MapPin, Wifi, Loader2, CheckCircle, XCircle } from 'lucide-react';
 import { Station, normalizeGenre } from '@/engine/types/radio';
 import { usePlayer } from '@/hooks/usePlayer';
 import { useEnrichedStationsSync } from '@/hooks/useEnrichedStation';
@@ -8,7 +9,7 @@ import { PopularityIndicator } from './PopularityIndicator';
 import { GenrePills } from './GenrePills';
 import { HealthDot } from './StationHealthBadge';
 import { useRadioStore } from '@/stores/radio.store';
-
+import { checkStationHealth, getHealthTier } from '@/engine/radio/health/healthChecker';
 interface StationListProps {
   stations: Station[];
   isLoading?: boolean;
@@ -16,8 +17,29 @@ interface StationListProps {
 
 export function StationList({ stations, isLoading }: StationListProps) {
   const { currentStation, status, play, toggle } = usePlayer();
-  const { setSelectedGenre, stationHealth } = useRadioStore();
+  const { setSelectedGenre, stationHealth, setStationHealth } = useRadioStore();
   const enrichedStations = useEnrichedStationsSync(stations);
+  const [testingIds, setTestingIds] = useState<Set<string>>(new Set());
+
+  const handleTestConnection = async (e: React.MouseEvent, station: Station) => {
+    e.stopPropagation();
+    
+    if (testingIds.has(station.id)) return;
+    
+    setTestingIds(prev => new Set(prev).add(station.id));
+    
+    try {
+      const url = station.urlResolved || station.url;
+      const health = await checkStationHealth(url!);
+      setStationHealth(station.id, health);
+    } finally {
+      setTestingIds(prev => {
+        const next = new Set(prev);
+        next.delete(station.id);
+        return next;
+      });
+    }
+  };
 
   if (isLoading) {
     return (
@@ -146,6 +168,24 @@ export function StationList({ stations, isLoading }: StationListProps) {
                   </div>
                 )}
               </div>
+
+              {/* Test connection button */}
+              <button
+                onClick={(e) => handleTestConnection(e, station)}
+                disabled={testingIds.has(station.id)}
+                className="neo-raised w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 hover:scale-105 transition-transform disabled:opacity-50"
+                title="Tester la connexion"
+              >
+                {testingIds.has(station.id) ? (
+                  <Loader2 className="w-4 h-4 text-muted-foreground animate-spin" />
+                ) : health?.ok === true ? (
+                  <CheckCircle className="w-4 h-4 text-green-500" />
+                ) : health?.ok === false ? (
+                  <XCircle className="w-4 h-4 text-destructive" />
+                ) : (
+                  <Wifi className="w-4 h-4 text-muted-foreground" />
+                )}
+              </button>
 
               {/* Play button */}
               <div className={`neo-button-primary w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
