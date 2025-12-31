@@ -1,6 +1,7 @@
 // Engine - RadioBrowser API Source
 import { Station, RadioBrowserStationSchema, StationSchema } from '../../types/radio';
 import { logger } from '../../core/logger';
+import { radioBrowserThrottler } from '../../core/throttle';
 import { z } from 'zod';
 
 const RADIOBROWSER_SERVERS = [
@@ -68,11 +69,23 @@ async function fetchWithRetry<T>(
     
     try {
       logger.debug('RadioBrowser', `Fetching ${url}`);
-      const response = await fetch(url, {
-        headers: {
-          'User-Agent': 'GlobeRadioEngine/1.0',
-        },
-      });
+      
+      // Use throttler to respect rate limits
+      const response = await radioBrowserThrottler.throttle(() =>
+        fetch(url, {
+          headers: {
+            'User-Agent': 'GlobeRadioEngine/1.0',
+          },
+        })
+      );
+      
+      // Handle rate limiting (429)
+      if (response.status === 429) {
+        const retryAfter = parseInt(response.headers.get('Retry-After') || '5', 10);
+        logger.warn('RadioBrowser', `Rate limited, waiting ${retryAfter}s`);
+        await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+        continue;
+      }
       
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);

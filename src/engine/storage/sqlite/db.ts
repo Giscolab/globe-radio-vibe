@@ -168,3 +168,117 @@ export async function deleteDatabase(): Promise<void> {
     }
   }
 }
+
+// ============================================================================
+// Database Maintenance Functions
+// ============================================================================
+
+/**
+ * VACUUM - Defragments the database and reclaims unused space
+ * Should be called periodically or after large deletions
+ */
+export async function vacuumDatabase(): Promise<void> {
+  const db = getDatabase();
+  if (!db) {
+    throw new Error('Database not initialized');
+  }
+
+  logger.info('Storage', 'Running VACUUM...');
+  const startTime = performance.now();
+  
+  db.exec('VACUUM');
+  
+  const duration = Math.round(performance.now() - startTime);
+  logger.info('Storage', `VACUUM completed in ${duration}ms`);
+}
+
+/**
+ * Checks database integrity for corruption
+ * Returns ok: true if database is healthy
+ */
+export async function checkIntegrity(): Promise<{ ok: boolean; errors: string[] }> {
+  const db = getDatabase();
+  if (!db) {
+    throw new Error('Database not initialized');
+  }
+
+  logger.info('Storage', 'Running integrity check...');
+  
+  const results = db.selectObjects<{ integrity_check: string }>(
+    'PRAGMA integrity_check'
+  );
+
+  const errors: string[] = [];
+  let ok = true;
+
+  for (const row of results) {
+    if (row.integrity_check !== 'ok') {
+      ok = false;
+      errors.push(row.integrity_check);
+    }
+  }
+
+  if (ok) {
+    logger.info('Storage', 'Integrity check passed');
+  } else {
+    logger.error('Storage', 'Integrity check failed:', errors);
+  }
+
+  return { ok, errors };
+}
+
+/**
+ * ANALYZE - Updates query planner statistics
+ * Should be called after large imports for optimal query performance
+ */
+export async function analyzeDatabase(): Promise<void> {
+  const db = getDatabase();
+  if (!db) {
+    throw new Error('Database not initialized');
+  }
+
+  logger.info('Storage', 'Running ANALYZE...');
+  const startTime = performance.now();
+  
+  db.exec('ANALYZE');
+  
+  const duration = Math.round(performance.now() - startTime);
+  logger.info('Storage', `ANALYZE completed in ${duration}ms`);
+}
+
+/**
+ * Returns database statistics for monitoring
+ */
+export async function getDatabaseStats(): Promise<{
+  sizeBytes: number;
+  pageCount: number;
+  pageSize: number;
+  tables: { name: string; rowCount: number }[];
+}> {
+  const db = getDatabase();
+  if (!db) {
+    throw new Error('Database not initialized');
+  }
+
+  const pageCount = db.selectValue('PRAGMA page_count') as number;
+  const pageSize = db.selectValue('PRAGMA page_size') as number;
+  const sizeBytes = pageCount * pageSize;
+
+  // Count rows in main tables
+  const tableNames = ['stations', 'favorites', 'play_history', 'settings'];
+  const tables: { name: string; rowCount: number }[] = [];
+
+  for (const name of tableNames) {
+    try {
+      const count = db.selectValue(`SELECT COUNT(*) FROM ${name}`) as number;
+      tables.push({ name, rowCount: count });
+    } catch {
+      // Table might not exist yet
+      tables.push({ name, rowCount: 0 });
+    }
+  }
+
+  logger.info('Storage', `Database stats: ${(sizeBytes / 1024).toFixed(1)} KB, ${pageCount} pages`);
+
+  return { sizeBytes, pageCount, pageSize, tables };
+}
