@@ -17,6 +17,12 @@ const PEAK_MULTIPLIER = 1.3;
 const PEAK_MIN_VOLUME = 0.15;
 const FFT_SIZE = 256;
 
+// Global caches - survive analyzer lifecycle to handle Web Audio API restrictions
+// Once a MediaElementSourceNode is created, it cannot be recreated for the same element
+const sourceNodeCache = new WeakMap<HTMLMediaElement, MediaElementAudioSourceNode>();
+// Track elements blocked by CORS to avoid repeated connection attempts
+const corsBlockedElements = new WeakSet<HTMLMediaElement>();
+
 class AudioAnalyzer {
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
@@ -49,13 +55,19 @@ class AudioAnalyzer {
    */
   connect(audioElement: HTMLAudioElement): boolean {
     try {
+      // Skip CORS-blocked elements silently
+      if (corsBlockedElements.has(audioElement)) {
+        logger.debug('AudioAnalyzer', 'Skipping CORS-blocked element');
+        return false;
+      }
+      
       // Don't reconnect to the same element
       if (this.connectedElement === audioElement && this.analyser) {
         return true;
       }
       
-      // Disconnect previous if any
-      this.disconnect();
+      // Disconnect graph but preserve source node cache
+      this.disconnectGraph();
       
       // Create AudioContext lazily (requires user interaction)
       if (!this.audioContext) {
@@ -72,8 +84,28 @@ class AudioAnalyzer {
       this.analyser.fftSize = FFT_SIZE;
       this.analyser.smoothingTimeConstant = 0.8;
       
-      // Create source from audio element
-      this.source = this.audioContext.createMediaElementSource(audioElement);
+      // Check if we have a cached source node for this element
+      let cachedSource = sourceNodeCache.get(audioElement);
+      
+      if (cachedSource) {
+        // Reuse existing source node
+        this.source = cachedSource;
+        logger.debug('AudioAnalyzer', 'Reusing cached source node');
+      } else {
+        // Create new source and cache it
+        try {
+          this.source = this.audioContext.createMediaElementSource(audioElement);
+          sourceNodeCache.set(audioElement, this.source);
+        } catch (error: any) {
+          if (error.name === 'InvalidStateError') {
+            // Element was connected elsewhere - mark as unusable for this session
+            logger.debug('AudioAnalyzer', 'Element already has a source node from another context');
+            corsBlockedElements.add(audioElement);
+            return false;
+          }
+          throw error;
+        }
+      }
       
       // Connect: source -> analyser -> destination
       this.source.connect(this.analyser);
@@ -95,26 +127,34 @@ class AudioAnalyzer {
   }
 
   /**
-   * Disconnect from audio element
+   * Disconnect the audio graph but preserve source node (it cannot be recreated)
    */
-  disconnect(): void {
+  private disconnectGraph(): void {
     try {
       if (this.source) {
         this.source.disconnect();
-        this.source = null;
+        // Don't null out source - it's cached in sourceNodeCache
       }
       if (this.analyser) {
         this.analyser.disconnect();
         this.analyser = null;
       }
+      this.source = null;
       this.connectedElement = null;
       this.silenceStartTime = null;
       this.isSilent = false;
       this.previousVolume = 0;
-      logger.info('AudioAnalyzer', 'Disconnected');
     } catch (error) {
-      logger.warn('AudioAnalyzer', `Disconnect error: ${error}`);
+      // Ignore disconnect errors - nodes may already be disconnected
     }
+  }
+
+  /**
+   * Disconnect from audio element
+   */
+  disconnect(): void {
+    this.disconnectGraph();
+    logger.info('AudioAnalyzer', 'Disconnected');
   }
 
   /**
