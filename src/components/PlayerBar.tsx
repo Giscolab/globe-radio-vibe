@@ -1,26 +1,86 @@
-import { Play, Pause, Volume2, VolumeX, Radio } from 'lucide-react';
-import { useRadioStore } from '@/stores/radio.store';
+import { Play, Pause, Volume2, VolumeX, Radio, AlertCircle } from 'lucide-react';
+import { usePlayer } from '@/hooks/usePlayer';
+import { useAudioAnalysis } from '@/hooks/useAudioAnalysis';
+import { AudioVisualizer } from './AudioVisualizer';
+import { QualityBadge } from './QualityBadge';
+import { enrichStationSync } from '@/engine/radio/enrichment/stationEnricher';
 
 export function PlayerBar() {
-  const { currentStation, isPlaying, volume, setIsPlaying, setVolume } = useRadioStore();
+  const { 
+    currentStation, 
+    status, 
+    volume, 
+    muted,
+    toggle, 
+    setVolume,
+    toggleMute 
+  } = usePlayer();
+  
+  const isPlaying = status === 'playing';
+  const isLoading = status === 'loading';
+  
+  // Get audio analysis data when playing
+  const { fft, volume: audioVolume, peak, silent } = useAudioAnalysis({ 
+    enabled: isPlaying,
+    fps: 30 
+  });
+  
+  // Enrich station for quality badge
+  const enrichedStation = currentStation ? enrichStationSync(currentStation) : null;
 
   return (
     <div className="neo-raised-lg p-4">
       <div className="flex items-center gap-4">
-        {/* Station info */}
-        <div className="neo-circle w-14 h-14 flex items-center justify-center flex-shrink-0">
+        {/* Station icon with visualizer halo */}
+        <div 
+          className="neo-circle w-14 h-14 flex items-center justify-center flex-shrink-0 relative overflow-hidden"
+          style={{
+            boxShadow: isPlaying && peak 
+              ? `0 0 20px hsl(var(--accent) / 0.5)` 
+              : undefined,
+          }}
+        >
           {currentStation?.favicon ? (
-            <img src={currentStation.favicon} alt="" className="w-10 h-10 rounded-full object-cover" />
+            <img 
+              src={currentStation.favicon} 
+              alt="" 
+              className="w-10 h-10 rounded-full object-cover relative z-10" 
+            />
           ) : (
-            <Radio className="w-6 h-6 text-primary" />
+            <Radio className="w-6 h-6 text-primary relative z-10" />
+          )}
+          
+          {/* Pulsing glow based on volume */}
+          {isPlaying && (
+            <div 
+              className="absolute inset-0 rounded-full bg-primary/20 transition-transform duration-100"
+              style={{ 
+                transform: `scale(${1 + audioVolume * 0.3})`,
+                opacity: 0.5 + audioVolume * 0.5 
+              }}
+            />
           )}
         </div>
 
+        {/* Station info */}
         <div className="flex-1 min-w-0">
           {currentStation ? (
             <>
-              <h4 className="font-medium text-foreground truncate">{currentStation.name}</h4>
-              <p className="text-sm text-muted-foreground truncate">{currentStation.country}</p>
+              <div className="flex items-center gap-2">
+                <h4 className="font-medium text-foreground truncate">{currentStation.name}</h4>
+                {enrichedStation && (
+                  <QualityBadge tier={enrichedStation.qualityTier} />
+                )}
+              </div>
+              <p className="text-sm text-muted-foreground truncate">
+                {currentStation.country}
+                {silent && isPlaying && (
+                  <span className="ml-2 text-amber-500 inline-flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" />
+                    Silence détecté
+                  </span>
+                )}
+              </p>
             </>
           ) : (
             <>
@@ -30,36 +90,62 @@ export function PlayerBar() {
           )}
         </div>
 
+        {/* Mini visualizer */}
+        {isPlaying && (
+          <div className="hidden sm:block">
+            <AudioVisualizer
+              fft={fft}
+              volume={audioVolume}
+              peak={peak}
+              silent={silent}
+              mode="bars"
+              size="sm"
+            />
+          </div>
+        )}
+
         {/* Controls */}
         <div className="flex items-center gap-3">
           <button
-            onClick={() => setIsPlaying(!isPlaying)}
-            disabled={!currentStation}
-            className={`neo-button-primary w-12 h-12 rounded-full flex items-center justify-center disabled:opacity-50 ${
+            onClick={toggle}
+            disabled={!currentStation || isLoading}
+            className={`neo-button-primary w-12 h-12 rounded-full flex items-center justify-center disabled:opacity-50 transition-all ${
               isPlaying ? 'animate-pulse-glow' : ''
-            }`}
+            } ${peak ? 'scale-105' : 'scale-100'}`}
           >
-            {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
+            {isLoading ? (
+              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : isPlaying ? (
+              <Pause className="w-5 h-5" />
+            ) : (
+              <Play className="w-5 h-5 ml-0.5" />
+            )}
           </button>
 
           <button
-            onClick={() => setVolume(volume === 0 ? 0.8 : 0)}
+            onClick={toggleMute}
             className="neo-button p-2"
           >
-            {volume === 0 ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+            {muted || volume === 0 ? (
+              <VolumeX className="w-5 h-5" />
+            ) : (
+              <Volume2 className="w-5 h-5" />
+            )}
           </button>
 
           <div className="w-24 neo-track h-2 relative">
             <div
-              className="absolute inset-y-0 left-0 bg-primary rounded-full"
-              style={{ width: `${volume * 100}%` }}
+              className={`absolute inset-y-0 left-0 rounded-full transition-all ${
+                peak ? 'bg-accent' : 'bg-primary'
+              }`}
+              style={{ width: `${(muted ? 0 : volume) * 100}%` }}
             />
             <input
               type="range"
               min="0"
               max="1"
               step="0.01"
-              value={volume}
+              value={muted ? 0 : volume}
               onChange={(e) => setVolume(parseFloat(e.target.value))}
               className="absolute inset-0 w-full opacity-0 cursor-pointer"
             />

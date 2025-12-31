@@ -1,9 +1,10 @@
-// Engine - Audio Engine (Howler wrapper)
+// Engine - Audio Engine (Howler wrapper) with WebAudio integration
 import { Howl } from 'howler';
 import { logger } from '../core/logger';
 import { Station } from '../types/radio';
 import { retryWithBackoff, RetryConfig } from './retryPolicy';
 import { playerMetrics } from './metrics';
+import { audioAnalyzer } from '../audio/audioAnalyzer';
 
 export type PlayerStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'error';
 
@@ -28,6 +29,7 @@ class AudioEngine {
   };
   private listeners: Set<StateListener> = new Set();
   private playStartTime: number | null = null;
+  private analyzerConnected = false;
 
   subscribe(listener: StateListener): () => void {
     this.listeners.add(listener);
@@ -48,6 +50,37 @@ class AudioEngine {
 
   getState(): AudioEngineState {
     return { ...this.state };
+  }
+
+  /**
+   * Connect WebAudio analyzer to current Howl audio element
+   */
+  private connectAnalyzer(): void {
+    if (!this.howl || this.analyzerConnected) return;
+    
+    try {
+      // Access Howler's internal audio node
+      const sounds = (this.howl as any)._sounds;
+      if (sounds && sounds.length > 0) {
+        const audioNode = sounds[0]._node as HTMLAudioElement;
+        if (audioNode) {
+          this.analyzerConnected = audioAnalyzer.connect(audioNode);
+          logger.info('AudioEngine', 'WebAudio analyzer connected');
+        }
+      }
+    } catch (error) {
+      logger.warn('AudioEngine', `Failed to connect analyzer: ${error}`);
+    }
+  }
+
+  /**
+   * Disconnect WebAudio analyzer
+   */
+  private disconnectAnalyzer(): void {
+    if (this.analyzerConnected) {
+      audioAnalyzer.disconnect();
+      this.analyzerConnected = false;
+    }
   }
 
   async play(station: Station): Promise<void> {
@@ -83,6 +116,11 @@ class AudioEngine {
               this.playStartTime = Date.now();
               this.setState({ status: 'playing', error: null });
               playerMetrics.recordPlay(station.id);
+              
+              // Connect WebAudio analyzer after playback starts
+              // Small delay to ensure audio node is ready
+              setTimeout(() => this.connectAnalyzer(), 100);
+              
               resolve();
             },
             onpause: () => {
@@ -90,20 +128,24 @@ class AudioEngine {
             },
             onstop: () => {
               this.recordPlayTime();
+              this.disconnectAnalyzer();
               this.setState({ status: 'idle' });
             },
             onend: () => {
               this.recordPlayTime();
+              this.disconnectAnalyzer();
               this.setState({ status: 'idle' });
             },
             onloaderror: (_, error) => {
               logger.error('AudioEngine', `Load error: ${error}`);
               playerMetrics.recordError(station.id);
+              this.disconnectAnalyzer();
               reject(new Error(`Failed to load: ${error}`));
             },
             onplayerror: (_, error) => {
               logger.error('AudioEngine', `Play error: ${error}`);
               playerMetrics.recordError(station.id);
+              this.disconnectAnalyzer();
               reject(new Error(`Failed to play: ${error}`));
             },
           });
@@ -114,6 +156,7 @@ class AudioEngine {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       logger.error('AudioEngine', `All attempts failed for ${station.name}: ${message}`);
+      this.disconnectAnalyzer();
       this.setState({
         status: 'error',
         error: message,
@@ -144,6 +187,7 @@ class AudioEngine {
   stop(): void {
     if (this.howl) {
       this.recordPlayTime();
+      this.disconnectAnalyzer();
       this.howl.unload();
       this.howl = null;
     }
@@ -179,6 +223,13 @@ class AudioEngine {
 
   toggleMute(): void {
     this.setMuted(!this.state.muted);
+  }
+
+  /**
+   * Check if WebAudio analyzer is connected
+   */
+  isAnalyzerConnected(): boolean {
+    return this.analyzerConnected;
   }
 }
 
