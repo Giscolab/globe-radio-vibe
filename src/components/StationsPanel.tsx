@@ -13,6 +13,7 @@ import { AmbienceChips } from './AmbienceChips';
 import { RecommendationsPanel } from './RecommendationsPanel';
 import { searchByAmbience, syncEmbeddings, type AmbienceType } from '@/engine/radio/ai/searchAI';
 import { enrichStationSync } from '@/engine/radio/enrichment/stationEnricher';
+import { healthMonitor } from '@/engine/radio/health';
 
 type TabId = 'stations' | 'favorites' | 'history';
 
@@ -33,9 +34,35 @@ export function StationsPanel() {
     setAISearchResults, 
     aiSearchResults, 
     isAISearching, 
-    setIsAISearching 
+    setIsAISearching,
+    setStationHealth
   } = useRadioStore();
   const { stations, isLoading, isFetching, refetch } = useStations(selectedCountry?.iso2 ?? null);
+
+  // Start health monitor and subscribe to updates
+  useEffect(() => {
+    healthMonitor.start(120000); // Check every 2 minutes
+    
+    const unsubscribe = healthMonitor.onUpdate((stationId, health) => {
+      setStationHealth(stationId, health);
+    });
+    
+    return () => {
+      unsubscribe();
+    };
+  }, [setStationHealth]);
+
+  // Register stations for health monitoring
+  useEffect(() => {
+    if (stations.length > 0) {
+      stations.forEach(station => {
+        const url = station.urlResolved || station.url;
+        if (url) {
+          healthMonitor.registerStation(station.id, url);
+        }
+      });
+    }
+  }, [stations]);
 
   // Sync embeddings when stations are loaded
   useEffect(() => {

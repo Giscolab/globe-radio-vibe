@@ -1,9 +1,12 @@
-import { Play, Pause, Volume2, VolumeX, Radio, AlertCircle } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, Radio, AlertCircle, WifiOff } from 'lucide-react';
 import { usePlayer } from '@/hooks/usePlayer';
+import { useRadioStore } from '@/stores/radio.store';
 import { useAudioAnalysis } from '@/hooks/useAudioAnalysis';
 import { AudioVisualizer } from './AudioVisualizer';
 import { QualityBadge } from './QualityBadge';
+import { StationHealthBadge } from './StationHealthBadge';
 import { enrichStationSync } from '@/engine/radio/enrichment/stationEnricher';
+import { getHealthTier } from '@/engine/radio/health';
 
 export function PlayerBar() {
   const { 
@@ -16,6 +19,8 @@ export function PlayerBar() {
     toggleMute 
   } = usePlayer();
   
+  const { stationHealth } = useRadioStore();
+  
   const isPlaying = status === 'playing';
   const isLoading = status === 'loading';
   
@@ -27,6 +32,10 @@ export function PlayerBar() {
   
   // Enrich station for quality badge
   const enrichedStation = currentStation ? enrichStationSync(currentStation) : null;
+  
+  // Get health status
+  const health = currentStation ? stationHealth[currentStation.id] : null;
+  const isUnstable = health && !health.ok;
 
   return (
     <div className="neo-raised-lg p-4">
@@ -71,10 +80,21 @@ export function PlayerBar() {
                 {enrichedStation && (
                   <QualityBadge tier={enrichedStation.qualityTier} />
                 )}
+                {health && (
+                  <StationHealthBadge health={health} size="sm" />
+                )}
               </div>
               <p className="text-sm text-muted-foreground truncate">
                 {currentStation.country}
-                {silent && isPlaying && (
+                {/* Unstable stream warning */}
+                {isUnstable && isPlaying && (
+                  <span className="ml-2 text-red-400 inline-flex items-center gap-1">
+                    <WifiOff className="w-3 h-3" />
+                    Flux instable
+                  </span>
+                )}
+                {/* Silence warning */}
+                {silent && isPlaying && !isUnstable && (
                   <span className="ml-2 text-amber-500 inline-flex items-center gap-1">
                     <AlertCircle className="w-3 h-3" />
                     Silence détecté
