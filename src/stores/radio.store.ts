@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+import create from 'zustand';
 import type { Station } from '@/engine/types';
 
 export interface PlayRecord {
