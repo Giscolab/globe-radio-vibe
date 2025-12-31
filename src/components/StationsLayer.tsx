@@ -1,4 +1,5 @@
 // Component - StationsLayer: instanced rendering of station points on globe
+// Supports both clustered and individual station display based on zoom
 import { useRef, useMemo, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -9,6 +10,7 @@ interface StationsLayerProps {
   stations: Station[];
   currentStationId?: string | null;
   globeRadius?: number;
+  zoom?: number;
 }
 
 const GENRE_COLORS: Record<string, THREE.Color> = {
@@ -25,7 +27,12 @@ const GENRE_COLORS: Record<string, THREE.Color> = {
 const POINT_SIZE = 0.015;
 const ACTIVE_SCALE = 2.5;
 
-export function StationsLayer({ stations, currentStationId, globeRadius = 1 }: StationsLayerProps) {
+export function StationsLayer({ 
+  stations, 
+  currentStationId, 
+  globeRadius = 1,
+  zoom = 1 
+}: StationsLayerProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const dummy = useMemo(() => new THREE.Object3D(), []);
   const activeIndexRef = useRef<number>(-1);
