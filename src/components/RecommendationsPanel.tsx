@@ -90,8 +90,7 @@ export function RecommendationsPanel() {
                     decoding="async"
                     className="w-8 h-8 rounded object-cover bg-muted"
                     onError={(e) => {
-                      (e.target as HTMLImageElement).src = '';
-                      (e.target as HTMLImageElement).className = 'hidden';
+                      (e.target as HTMLImageElement).style.display = 'none';
                     }}
                   />
                 ) : (
