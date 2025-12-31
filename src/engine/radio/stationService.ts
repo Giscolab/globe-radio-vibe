@@ -17,7 +17,7 @@ function isCacheValid(key: string): boolean {
 }
 
 // ----------------------------------
-// Validate URL helper
+// Validate and sanitize URL helper
 // ----------------------------------
 function isValidUrl(url: string | undefined | null): boolean {
   if (!url || url === 'null' || url === 'undefined') return false;
@@ -27,6 +27,16 @@ function isValidUrl(url: string | undefined | null): boolean {
   } catch {
     return false;
   }
+}
+
+// Convert HTTP URLs to HTTPS to avoid mixed content issues
+function sanitizeUrl(url: string | undefined | null): string | undefined {
+  if (!isValidUrl(url)) return undefined;
+  // Upgrade http:// to https://
+  if (url!.startsWith('http://')) {
+    return url!.replace('http://', 'https://');
+  }
+  return url!;
 }
 
 // ----------------------------------
@@ -39,7 +49,7 @@ function mapStation(rb: any): Station {
     url: rb.url_resolved || rb.url,
     urlResolved: rb.url_resolved || undefined,
     homepage: rb.homepage || undefined,
-    favicon: isValidUrl(rb.favicon) ? rb.favicon : undefined,
+    favicon: sanitizeUrl(rb.favicon),
     country: rb.country || "",
     countryCode: rb.countrycode || "",
     state: rb.state || undefined,
