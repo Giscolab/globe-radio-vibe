@@ -1,4 +1,4 @@
-import * as RadioBrowser from "radio-browser";
+// Engine - Station Service via Edge Function Proxy
 import { Station } from "../types/radio";
 import { logger } from "../core/logger";
 
@@ -24,20 +24,66 @@ function mapStation(rb: any): Station {
     id: rb.stationuuid,
     name: rb.name,
     url: rb.url_resolved || rb.url,
-    homepage: rb.homepage || null,
-    favicon: rb.favicon || null,
+    urlResolved: rb.url_resolved || undefined,
+    homepage: rb.homepage || undefined,
+    favicon: rb.favicon || undefined,
     country: rb.country || "",
     countryCode: rb.countrycode || "",
-    state: rb.state || null,
-    tags: rb.tags ? rb.tags.split(",").map((t: string) => t.trim()) : [],
-    bitrate: Number(rb.bitrate) || 0,
-    codec: rb.codec || null,
+    state: rb.state || undefined,
+    language: rb.language || undefined,
+    tags: rb.tags ? rb.tags.split(",").map((t: string) => t.trim()).filter(Boolean) : [],
+    bitrate: Number(rb.bitrate) || undefined,
+    codec: rb.codec || undefined,
     votes: Number(rb.votes) || 0,
+    clickCount: Number(rb.clickcount) || 0,
+    clickTrend: Number(rb.clicktrend) || 0,
+    lastCheckOk: rb.lastcheckok === 1,
+    lastCheckTime: rb.lastchecktime || undefined,
     geo:
-      rb.geo_lat && rb.geo_long
+      rb.geo_lat != null && rb.geo_long != null
         ? { lat: Number(rb.geo_lat), lon: Number(rb.geo_long) }
-        : null,
+        : undefined,
   };
+}
+
+// ----------------------------------
+// Call Edge Function Proxy
+// ----------------------------------
+async function callRadioProxy(params: Record<string, string>): Promise<any[]> {
+  const searchParams = new URLSearchParams(params);
+  
+  const projectUrl = import.meta.env.VITE_SUPABASE_URL;
+  const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  
+  if (!projectUrl || !anonKey) {
+    logger.error("StationService", "Missing Supabase config");
+    throw new Error("Missing Supabase configuration");
+  }
+  
+  const url = `${projectUrl}/functions/v1/radio-proxy?${searchParams.toString()}`;
+  
+  logger.info("StationService", `Calling proxy: ${url}`);
+  
+  const response = await fetch(url, {
+    headers: {
+      'Authorization': `Bearer ${anonKey}`,
+      'apikey': anonKey,
+    },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    logger.error("StationService", `Proxy error: ${response.status} - ${errorText}`);
+    throw new Error(`Proxy error: ${response.status}`);
+  }
+
+  const result = await response.json();
+  
+  if (result.error) {
+    throw new Error(result.error);
+  }
+  
+  return Array.isArray(result) ? result : [];
 }
 
 // ----------------------------------
@@ -50,20 +96,29 @@ export async function getStationsByCountry(
   const key = `country:${countryCode.toUpperCase()}`;
 
   if (!forceRefresh && isCacheValid(key)) {
+    logger.debug("StationService", `Cache hit for ${countryCode}`);
     return cache.get(key)!.data;
   }
 
   logger.info("StationService", `Fetching stations for ${countryCode}`);
 
-  const result = await RadioBrowser.searchStations({
-    countrycode: countryCode,
-    limit: 500,
-  });
+  try {
+    const result = await callRadioProxy({
+      action: 'bycountry',
+      countrycode: countryCode.toUpperCase(),
+      limit: '100',
+    });
 
-  const stations = result.map(mapStation);
+    const stations = result.map(mapStation);
+    
+    logger.info("StationService", `Got ${stations.length} stations for ${countryCode}`);
 
-  cache.set(key, { timestamp: Date.now(), data: stations });
-  return stations;
+    cache.set(key, { timestamp: Date.now(), data: stations });
+    return stations;
+  } catch (error) {
+    logger.error("StationService", `Failed to fetch ${countryCode}: ${error}`);
+    return [];
+  }
 }
 
 // ----------------------------------
@@ -74,26 +129,57 @@ export async function searchStations(query: string): Promise<Station[]> {
 
   if (isCacheValid(key)) return cache.get(key)!.data;
 
-  const result = await RadioBrowser.searchStations({
-    searchterm: query,
-    limit: 100,
-  });
+  logger.info("StationService", `Searching: ${query}`);
 
-  const stations = result.map(mapStation);
-  cache.set(key, { timestamp: Date.now(), data: stations });
+  try {
+    const result = await callRadioProxy({
+      action: 'search',
+      name: query,
+      limit: '100',
+    });
 
-  return stations;
+    const stations = result.map(mapStation);
+    cache.set(key, { timestamp: Date.now(), data: stations });
+
+    return stations;
+  } catch (error) {
+    logger.error("StationService", `Search failed: ${error}`);
+    return [];
+  }
 }
 
 // ----------------------------------
-// CLICK REPORT
+// GET TOP STATIONS
+// ----------------------------------
+export async function getTopStations(limit = 100): Promise<Station[]> {
+  const key = `top:${limit}`;
+
+  if (isCacheValid(key)) return cache.get(key)!.data;
+
+  logger.info("StationService", `Fetching top ${limit} stations`);
+
+  try {
+    const result = await callRadioProxy({
+      action: 'topclick',
+      limit: limit.toString(),
+    });
+
+    const stations = result.map(mapStation);
+    cache.set(key, { timestamp: Date.now(), data: stations });
+
+    return stations;
+  } catch (error) {
+    logger.error("StationService", `Failed to fetch top stations: ${error}`);
+    return [];
+  }
+}
+
+// ----------------------------------
+// CLICK REPORT (not proxied, silent fail OK)
 // ----------------------------------
 export async function onStationPlay(stationId: string): Promise<void> {
-  try {
-    await RadioBrowser.clickStation(stationId);
-  } catch {
-    // ignore
-  }
+  // Optional: could proxy this too, but not critical
+  logger.debug("StationService", `Station play: ${stationId}`);
 }
 
 // ----------------------------------
