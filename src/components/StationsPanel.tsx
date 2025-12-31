@@ -86,22 +86,14 @@ export function StationsPanel({ onClose }: StationsPanelProps) {
     };
   }, [stations, topStations, selectedCountry, setStationHealth]);
 
-  // Sync embeddings when stations are loaded (debounced)
+  // Sync embeddings when stations are loaded
   useEffect(() => {
-    const stationsToSync = selectedCountry ? stations : topStations;
-    if (stationsToSync.length === 0 || hasSynced) return;
-    
-    // Debounce to avoid sync during rapid updates
-    const timer = setTimeout(() => {
-      const enriched = stationsToSync.map(s => enrichStationSync(s));
-      syncEmbeddings(enriched).then(() => {
-        setHasSynced(true);
-        console.log('[StationsPanel] Embeddings synced');
-      });
-    }, 1000);
-    
-    return () => clearTimeout(timer);
-  }, [stations.length, topStations.length, hasSynced, selectedCountry]);
+    if (!stations.length) return;
+    if (hasSynced) return;
+
+    const enriched = stations.map(s => enrichStationSync(s));
+    syncEmbeddings(enriched).finally(() => setHasSynced(true));
+  }, [stations.length, hasSynced]);
 
   // Handle ambience selection
   const handleAmbienceSelect = async (ambience: AmbienceType) => {
