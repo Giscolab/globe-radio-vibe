@@ -17,6 +17,19 @@ function isCacheValid(key: string): boolean {
 }
 
 // ----------------------------------
+// Validate URL helper
+// ----------------------------------
+function isValidUrl(url: string | undefined | null): boolean {
+  if (!url || url === 'null' || url === 'undefined') return false;
+  try {
+    new URL(url);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// ----------------------------------
 // Mapping RadioBrowser → Station
 // ----------------------------------
 function mapStation(rb: any): Station {
@@ -26,7 +39,7 @@ function mapStation(rb: any): Station {
     url: rb.url_resolved || rb.url,
     urlResolved: rb.url_resolved || undefined,
     homepage: rb.homepage || undefined,
-    favicon: rb.favicon || undefined,
+    favicon: isValidUrl(rb.favicon) ? rb.favicon : undefined,
     country: rb.country || "",
     countryCode: rb.countrycode || "",
     state: rb.state || undefined,
