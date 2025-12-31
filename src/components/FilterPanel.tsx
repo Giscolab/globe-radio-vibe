@@ -1,7 +1,8 @@
 // Component - FilterPanel: collapsible filters for stations
 import { useState } from 'react';
-import { Filter, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { Filter, ChevronDown, ChevronUp, X, Sparkles } from 'lucide-react';
 import { useRadioStore } from '@/stores/radio.store';
+import type { QualityTier } from '@/engine/types/radio';
 
 const GENRES = [
   { id: 'pop', label: 'Pop' },
@@ -11,6 +12,7 @@ const GENRES = [
   { id: 'electronic', label: 'Électro' },
   { id: 'hiphop', label: 'Hip-Hop' },
   { id: 'country', label: 'Country' },
+  { id: 'world', label: 'Monde' },
 ];
 
 const BITRATES = [
@@ -21,19 +23,27 @@ const BITRATES = [
   { value: 320, label: '320 kbps' },
 ];
 
+const QUALITY_TIERS: { value: QualityTier; label: string; icon: string }[] = [
+  { value: 'hd', label: 'HD Audio', icon: '🎧' },
+  { value: 'high', label: 'Haute qualité', icon: '✨' },
+  { value: 'medium', label: 'Standard', icon: '📻' },
+];
+
 export function FilterPanel() {
   const [isOpen, setIsOpen] = useState(false);
   const { 
     selectedGenre, 
     selectedBitrate, 
+    selectedQuality,
     onlineOnly,
     setSelectedGenre, 
     setSelectedBitrate,
+    setSelectedQuality,
     setOnlineOnly,
     clearFilters 
   } = useRadioStore();
 
-  const hasActiveFilters = selectedGenre || selectedBitrate || onlineOnly;
+  const hasActiveFilters = selectedGenre || selectedBitrate || selectedQuality || onlineOnly;
 
   return (
     <div className="border-b border-border/50">
@@ -80,6 +90,15 @@ export function FilterPanel() {
                   </button>
                 </span>
               )}
+              {selectedQuality && (
+                <span className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-accent/20 text-accent rounded-full">
+                  {QUALITY_TIERS.find(q => q.value === selectedQuality)?.icon}
+                  {QUALITY_TIERS.find(q => q.value === selectedQuality)?.label}
+                  <button onClick={() => setSelectedQuality(null)}>
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
               {onlineOnly && (
                 <span className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-accent/20 text-accent rounded-full">
                   En ligne
@@ -96,6 +115,30 @@ export function FilterPanel() {
               </button>
             </div>
           )}
+
+          {/* Quality filter */}
+          <div>
+            <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground mb-2">
+              <Sparkles className="w-3.5 h-3.5" />
+              Qualité audio
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {QUALITY_TIERS.map((quality) => (
+                <button
+                  key={quality.value}
+                  onClick={() => setSelectedQuality(selectedQuality === quality.value ? null : quality.value)}
+                  className={`px-3 py-1.5 text-xs rounded-full transition-all flex items-center gap-1 ${
+                    selectedQuality === quality.value
+                      ? 'neo-pressed bg-accent/20 text-accent'
+                      : 'neo-raised-sm hover:bg-muted'
+                  }`}
+                >
+                  <span>{quality.icon}</span>
+                  {quality.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* Genre filter */}
           <div>
@@ -122,7 +165,7 @@ export function FilterPanel() {
           {/* Bitrate filter */}
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-2">
-              Qualité audio
+              Débit minimum
             </label>
             <div className="flex flex-wrap gap-2">
               {BITRATES.map((bitrate) => (

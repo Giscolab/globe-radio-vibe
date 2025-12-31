@@ -63,6 +63,7 @@ export const useRadioStore = create<RadioState>((set, get) => ({
   searchQuery: '',
   selectedGenre: null,
   selectedBitrate: null,
+  selectedQuality: null,
   onlineOnly: false,
   favorites: [],
   history: [],
@@ -96,6 +97,11 @@ export const useRadioStore = create<RadioState>((set, get) => ({
   
   setOnlineOnly: (online) => {
     set({ onlineOnly: online });
+    get().applyFilters();
+  },
+  
+  setSelectedQuality: (quality) => {
+    set({ selectedQuality: quality });
     get().applyFilters();
   },
   
@@ -140,6 +146,7 @@ export const useRadioStore = create<RadioState>((set, get) => ({
       searchQuery: '', 
       selectedGenre: null, 
       selectedBitrate: null,
+      selectedQuality: null,
       onlineOnly: false 
     });
     const { stations } = get();
