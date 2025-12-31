@@ -4,8 +4,8 @@ import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { loadWorldAtlas, topoToGeoJson, CountryIndex, findCountryAtPoint, latLonToXYZ, xyzToLatLon } from '@/engine';
 import { useGeoStore } from '@/stores/geo.store';
+import { useRadioStore } from '@/stores/radio.store';
 import { usePlayer } from '@/hooks/usePlayer';
-import { useStations } from '@/hooks/useStations';
 import { StationsLayer } from './StationsLayer';
 import type { Feature, Polygon, MultiPolygon } from 'geojson';
 
@@ -128,10 +128,13 @@ function GlobeScene() {
   const [countryIndex, setCountryIndex] = useState<CountryIndex | null>(null);
   const { setLoading, setError, selectedCountry } = useGeoStore();
   
-  // Get stations and player state for visualization
-  const { stations } = useStations(selectedCountry?.iso2 ?? null);
+  // Get stations from the store (both top and country-specific)
+  const { stations: countryStations, topStations } = useRadioStore();
   const { currentStation, status } = usePlayer();
   const isPlaying = status === 'playing';
+  
+  // Combine stations for globe display
+  const allStations = selectedCountry ? countryStations : topStations;
 
   useEffect(() => {
     async function loadGeo() {
@@ -166,7 +169,7 @@ function GlobeScene() {
       
       {/* Stations layer with audio-reactive pulsing */}
       <StationsLayer 
-        stations={stations}
+        stations={allStations}
         currentStationId={currentStation?.id}
         isPlaying={isPlaying}
         globeRadius={GLOBE_RADIUS}

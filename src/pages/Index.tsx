@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GlobeCanvas } from '@/components/GlobeCanvas';
 import { StationsPanel } from '@/components/StationsPanel';
 import { PlayerBar } from '@/components/PlayerBar';
+import { GenreLegend } from '@/components/GenreLegend';
 import { useState } from 'react';
 import { PanelRightClose, PanelRight } from 'lucide-react';
 
@@ -17,6 +18,9 @@ function IndexContent() {
         {/* Globe */}
         <div className={`flex-1 relative transition-all duration-300`}>
           <GlobeCanvas />
+          
+          {/* Genre legend */}
+          <GenreLegend />
           
           {/* Toggle button when panel is closed */}
           {!isPanelOpen && (

@@ -123,28 +123,50 @@ export const FavoriteSchema = z.object({
 
 export type Favorite = z.infer<typeof FavoriteSchema>;
 
-// Genre mapping
+// Genre mapping - comprehensive
 export const GENRE_MAP: Record<string, string> = {
-  'pop': 'pop',
-  'rock': 'rock',
-  'jazz': 'jazz',
-  'classical': 'classical',
-  'electronic': 'electronic',
-  'dance': 'electronic',
-  'techno': 'electronic',
-  'house': 'electronic',
-  'hip hop': 'hiphop',
-  'hip-hop': 'hiphop',
-  'rap': 'hiphop',
-  'country': 'country',
-  'folk': 'country',
+  // Pop
+  'pop': 'pop', 'top 40': 'pop', 'charts': 'pop', 'hits': 'pop', 'mainstream': 'pop',
+  // Rock
+  'rock': 'rock', 'classic rock': 'rock', 'indie rock': 'rock', 'alternative': 'rock', 
+  'hard rock': 'rock', 'punk': 'rock', 'metal': 'rock', 'heavy metal': 'rock',
+  // Jazz
+  'jazz': 'jazz', 'smooth jazz': 'jazz', 'bebop': 'jazz', 'swing': 'jazz', 'big band': 'jazz',
+  // Classical
+  'classical': 'classical', 'opera': 'classical', 'symphony': 'classical', 'baroque': 'classical',
+  // Electronic
+  'electronic': 'electronic', 'house': 'electronic', 'techno': 'electronic', 'trance': 'electronic',
+  'edm': 'electronic', 'dance': 'electronic', 'ambient': 'electronic', 'drum and bass': 'electronic',
+  'dubstep': 'electronic', 'chillout': 'electronic', 'lounge': 'electronic',
+  // Hip-hop
+  'hip hop': 'hiphop', 'hip-hop': 'hiphop', 'rap': 'hiphop', 'r&b': 'hiphop', 
+  'rnb': 'hiphop', 'urban': 'hiphop', 'trap': 'hiphop', 'soul': 'hiphop', 'funk': 'hiphop',
+  // Country
+  'country': 'country', 'folk': 'country', 'bluegrass': 'country', 'americana': 'country',
+  // World
+  'world': 'world', 'latin': 'world', 'reggae': 'world', 'african': 'world', 
+  'caribbean': 'world', 'brazilian': 'world', 'salsa': 'world', 'flamenco': 'world',
+  // News/Talk
+  'news': 'news', 'talk': 'news', 'talk radio': 'news', 'information': 'news',
+  // Sports
+  'sports': 'sports', 'sport': 'sports',
+  // Religious
+  'religious': 'religious', 'christian': 'religious', 'gospel': 'religious',
+  // Oldies
+  'oldies': 'oldies', '60s': 'oldies', '70s': 'oldies', '80s': 'oldies', '90s': 'oldies', 'retro': 'oldies',
 };
 
 export function normalizeGenre(tags: string[]): string {
-  const lowerTags = tags.map(t => t.toLowerCase());
+  const lowerTags = tags.map(t => t.toLowerCase().trim());
   for (const tag of lowerTags) {
     if (GENRE_MAP[tag]) {
       return GENRE_MAP[tag];
+    }
+    // Partial match
+    for (const [key, genre] of Object.entries(GENRE_MAP)) {
+      if (tag.includes(key) || key.includes(tag)) {
+        return genre;
+      }
     }
   }
   return 'other';

@@ -32,12 +32,14 @@ export function StationsPanel({ onClose }: StationsPanelProps) {
   const [activeTab, setActiveTab] = useState<TabId>('stations');
   const [selectedAmbience, setSelectedAmbience] = useState<AmbienceType | null>(null);
   const [hasSynced, setHasSynced] = useState(false);
-  const [topStations, setTopStations] = useState<any[]>([]);
-  const [isLoadingTop, setIsLoadingTop] = useState(false);
   
   const { selectedCountry, setSelectedCountry } = useGeoStore();
   const { 
-    stations: storeStations, 
+    stations: storeStations,
+    topStations,
+    setTopStations,
+    isLoadingTop,
+    setLoadingTop, 
     setAISearchResults, 
     aiSearchResults, 
     isAISearching, 
@@ -48,14 +50,14 @@ export function StationsPanel({ onClose }: StationsPanelProps) {
 
   // Load top stations when no country is selected
   useEffect(() => {
-    if (!selectedCountry && topStations.length === 0 && !isLoadingTop) {
-      setIsLoadingTop(true);
+    if (topStations.length === 0 && !isLoadingTop) {
+      setLoadingTop(true);
       getTopStations(50)
         .then(setTopStations)
         .catch(console.error)
-        .finally(() => setIsLoadingTop(false));
+        .finally(() => setLoadingTop(false));
     }
-  }, [selectedCountry, topStations.length, isLoadingTop]);
+  }, [topStations.length, isLoadingTop, setTopStations, setLoadingTop]);
 
   // Start health monitor and subscribe to updates
   useEffect(() => {
