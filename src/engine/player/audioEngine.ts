@@ -54,7 +54,7 @@ class AudioEngine {
   }
 
   /**
-   * Connect WebAudio analyzer to current Howl audio element
+   * Connect WebAudio analyzer to current Howl audio element (CORS-safe)
    */
   private connectAnalyzer(): void {
     if (!this.howl || this.analyzerConnected) return;
@@ -62,12 +62,21 @@ class AudioEngine {
     try {
       // Access Howler's internal audio node
       const sounds = (this.howl as any)._sounds;
-      if (sounds && sounds.length > 0) {
-        const audioNode = sounds[0]._node as HTMLAudioElement;
-        if (audioNode) {
-          this.analyzerConnected = audioAnalyzer.connect(audioNode);
+      if (!sounds || sounds.length === 0) return;
+      
+      const audioNode = sounds[0]._node as HTMLAudioElement;
+      if (!audioNode) return;
+      
+      // CORS-safe: wrap in try-catch, ignore failures silently
+      try {
+        this.analyzerConnected = audioAnalyzer.connect(audioNode);
+        if (this.analyzerConnected) {
           logger.info('AudioEngine', 'WebAudio analyzer connected');
         }
+      } catch (corsError) {
+        // MediaElementSource may fail on CORS streams - this is OK
+        logger.warn('AudioEngine', 'WebAudio CORS restriction - visualization disabled');
+        this.analyzerConnected = false;
       }
     } catch (error) {
       logger.warn('AudioEngine', `Failed to connect analyzer: ${error}`);
@@ -85,6 +94,12 @@ class AudioEngine {
   }
 
   async play(station: Station): Promise<void> {
+    // Skip if already playing this station
+    if (this.state.currentStation?.id === station.id && this.state.status === 'playing') {
+      logger.info('AudioEngine', 'Already playing this station');
+      return;
+    }
+    
     // Stop current playback
     this.stop();
 
@@ -143,8 +158,8 @@ class AudioEngine {
               playerMetrics.recordPlay(station.id);
               
               // Connect WebAudio analyzer after playback starts
-              // Small delay to ensure audio node is ready
-              setTimeout(() => this.connectAnalyzer(), 100);
+              // Increased delay for stream stabilization before connecting
+              setTimeout(() => this.connectAnalyzer(), 500);
               
               resolve();
             },

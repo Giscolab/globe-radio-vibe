@@ -86,10 +86,13 @@ export function StationList({ stations, isLoading }: StationListProps) {
         const health = stationHealth[station.id] || null;
 
         return (
-          <button
+          <div
             key={station.id}
+            role="button"
+            tabIndex={0}
             onClick={() => isActive ? toggle() : play(station)}
-            className={`w-full neo-raised p-3 transition-all hover:scale-[1.02] ${
+            onKeyDown={(e) => e.key === 'Enter' && (isActive ? toggle() : play(station))}
+            className={`w-full neo-raised p-3 transition-all hover:scale-[1.02] cursor-pointer ${
               isActive ? 'ring-2 ring-primary neo-pressed' : ''
             }`}
             style={{
@@ -202,7 +205,7 @@ export function StationList({ stations, isLoading }: StationListProps) {
                 )}
               </div>
             </div>
-          </button>
+          </div>
         );
       })}
     </div>
