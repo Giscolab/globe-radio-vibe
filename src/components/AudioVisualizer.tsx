@@ -1,5 +1,5 @@
 // Component - AudioVisualizer: Real-time audio visualization
-import { useMemo } from 'react';
+import { forwardRef, useMemo } from 'react';
 
 interface AudioVisualizerProps {
   fft: Uint8Array;
@@ -17,15 +17,16 @@ const SIZES = {
   lg: { bars: 64, height: 96, barWidth: 4, gap: 2 },
 };
 
-export function AudioVisualizer({
-  fft,
-  volume,
-  peak,
-  silent,
-  mode = 'bars',
-  size = 'sm',
-  className = '',
-}: AudioVisualizerProps) {
+export const AudioVisualizer = forwardRef<HTMLDivElement, AudioVisualizerProps>(
+  function AudioVisualizer({
+    fft,
+    volume,
+    peak,
+    silent,
+    mode = 'bars',
+    size = 'sm',
+    className = '',
+  }, ref) {
   const config = SIZES[size];
   
   // Sample FFT data to match bar count
@@ -78,28 +79,30 @@ export function AudioVisualizer({
     );
   }
   
-  // Default: bars mode
-  return (
-    <div 
-      className={`flex items-end gap-[${config.gap}px] ${className}`}
-      style={{ height: config.height, gap: config.gap }}
-    >
-      {barValues.map((value, i) => (
-        <div
-          key={i}
-          className={`rounded-full transition-all duration-75 ${
-            peak ? 'bg-accent' : 'bg-primary'
-          }`}
-          style={{
-            width: config.barWidth,
-            height: `${Math.max(4, value * config.height)}px`,
-            opacity: silent ? 0.3 : 0.7 + value * 0.3,
-          }}
-        />
-      ))}
-    </div>
-  );
-}
+    // Default: bars mode
+    return (
+      <div 
+        ref={ref}
+        className={`flex items-end gap-[${config.gap}px] ${className}`}
+        style={{ height: config.height, gap: config.gap }}
+      >
+        {barValues.map((value, i) => (
+          <div
+            key={i}
+            className={`rounded-full transition-all duration-75 ${
+              peak ? 'bg-accent' : 'bg-primary'
+            }`}
+            style={{
+              width: config.barWidth,
+              height: `${Math.max(4, value * config.height)}px`,
+              opacity: silent ? 0.3 : 0.7 + value * 0.3,
+            }}
+          />
+        ))}
+      </div>
+    );
+  }
+);
 
 // Mini visualizer for compact spaces
 function MiniVisualizer({ 
