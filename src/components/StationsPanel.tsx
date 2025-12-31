@@ -59,9 +59,13 @@ export function StationsPanel({ onClose }: StationsPanelProps) {
     }
   }, [topStations.length, isLoadingTop, setTopStations, setLoadingTop]);
 
-  // Start health monitor and subscribe to updates
+  // Start health monitor and subscribe to updates - deferred to reduce TTI
   useEffect(() => {
-    healthMonitor.start(120000); // Check every 2 minutes
+    const scheduleTask = window.requestIdleCallback || ((cb: () => void) => setTimeout(cb, 2000));
+    
+    const idleId = scheduleTask(() => {
+      healthMonitor.start(120000); // Check every 2 minutes
+    });
     
     const unsubscribe = healthMonitor.onUpdate((stationId, health) => {
       setStationHealth(stationId, health);
@@ -69,30 +73,41 @@ export function StationsPanel({ onClose }: StationsPanelProps) {
     
     return () => {
       unsubscribe();
+      if (window.cancelIdleCallback) {
+        window.cancelIdleCallback(idleId as number);
+      }
     };
   }, [setStationHealth]);
 
-  // Register stations for health monitoring
+  // Register stations for health monitoring - deferred
   useEffect(() => {
     const stationsToMonitor = selectedCountry ? stations : topStations;
     if (stationsToMonitor.length > 0) {
-      stationsToMonitor.forEach(station => {
-        const url = station.urlResolved || station.url;
-        if (url) {
-          healthMonitor.registerStation(station.id, url);
-        }
+      const scheduleTask = window.requestIdleCallback || ((cb: () => void) => setTimeout(cb, 3000));
+      
+      scheduleTask(() => {
+        stationsToMonitor.forEach(station => {
+          const url = station.urlResolved || station.url;
+          if (url) {
+            healthMonitor.registerStation(station.id, url);
+          }
+        });
       });
     }
   }, [stations, topStations, selectedCountry]);
 
-  // Sync embeddings when stations are loaded
+  // Sync embeddings when stations are loaded - deferred to reduce TTI
   useEffect(() => {
     const stationsToSync = selectedCountry ? stations : topStations;
     if (stationsToSync.length > 0 && !hasSynced) {
-      const enriched = stationsToSync.map(s => enrichStationSync(s));
-      syncEmbeddings(enriched).then(() => {
-        setHasSynced(true);
-        console.log('[StationsPanel] Embeddings synced');
+      const scheduleTask = window.requestIdleCallback || ((cb: () => void) => setTimeout(cb, 4000));
+      
+      scheduleTask(() => {
+        const enriched = stationsToSync.map(s => enrichStationSync(s));
+        syncEmbeddings(enriched).then(() => {
+          setHasSynced(true);
+          console.log('[StationsPanel] Embeddings synced');
+        });
       });
     }
   }, [stations.length, topStations.length, hasSynced, selectedCountry]);
