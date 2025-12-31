@@ -1,5 +1,5 @@
 // Component - StationList: display list of enriched radio stations
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { Radio, Play, Pause, Globe, MapPin, Wifi, Loader2, CheckCircle, XCircle } from 'lucide-react';
 import { Station, normalizeGenre } from '@/engine/types/radio';
 import { usePlayer } from '@/hooks/usePlayer';
@@ -20,6 +20,11 @@ export function StationList({ stations, isLoading }: StationListProps) {
   const { setSelectedGenre, stationHealth, setStationHealth } = useRadioStore();
   const enrichedStations = useEnrichedStationsSync(stations);
   const [testingIds, setTestingIds] = useState<Set<string>>(new Set());
+  const [brokenFavicons, setBrokenFavicons] = useState<Set<string>>(new Set());
+
+  const handleFaviconError = useCallback((stationId: string) => {
+    setBrokenFavicons(prev => new Set(prev).add(stationId));
+  }, []);
 
   const handleTestConnection = async (e: React.MouseEvent, station: Station) => {
     e.stopPropagation();
@@ -103,18 +108,16 @@ export function StationList({ stations, isLoading }: StationListProps) {
                     : undefined,
                 }}
               >
-                {station.favicon ? (
+                {station.favicon && !brokenFavicons.has(station.id) ? (
                   <img
                     src={station.favicon}
                     alt=""
                     className="w-7 h-7 rounded-full object-cover"
-                    onError={(e) => {
-                      e.currentTarget.style.display = 'none';
-                      e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                    }}
+                    onError={() => handleFaviconError(station.id)}
                   />
-                ) : null}
-                <Radio className={`w-5 h-5 text-primary ${station.favicon ? 'hidden' : ''}`} />
+                ) : (
+                  <Radio className="w-5 h-5 text-primary" />
+                )}
                 
                 {/* Playing indicator */}
                 {isPlaying && (
@@ -155,6 +158,7 @@ export function StationList({ stations, isLoading }: StationListProps) {
                     max={2}
                     onGenreClick={handleGenreClick}
                     size="sm"
+                    insideButton
                   />
                 </div>
                 
