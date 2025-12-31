@@ -165,6 +165,20 @@ class AudioAnalyzer {
   }
 
   /**
+   * Check if current element is CORS-blocked (visualization disabled but audio plays)
+   */
+  isCorsBlocked(): boolean {
+    return this.connectedElement !== null && corsBlockedElements.has(this.connectedElement);
+  }
+
+  /**
+   * Check if an element was marked as CORS-blocked
+   */
+  isElementCorsBlocked(element: HTMLMediaElement): boolean {
+    return corsBlockedElements.has(element);
+  }
+
+  /**
    * Get current audio analysis data
    */
   getAnalysis(): AudioAnalysis {

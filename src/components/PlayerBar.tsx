@@ -1,4 +1,4 @@
-import { Play, Pause, Volume2, VolumeX, Radio, AlertCircle, WifiOff } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, Radio, AlertCircle, WifiOff, EyeOff } from 'lucide-react';
 import { usePlayer } from '@/hooks/usePlayer';
 import { useRadioStore } from '@/stores/radio.store';
 import { useAudioAnalysis } from '@/hooks/useAudioAnalysis';
@@ -7,6 +7,7 @@ import { QualityBadge } from './QualityBadge';
 import { StationHealthBadge } from './StationHealthBadge';
 import { enrichStationSync } from '@/engine/radio/enrichment/stationEnricher';
 import { getHealthTier } from '@/engine/radio/health';
+import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 
 export function PlayerBar() {
   const { 
@@ -25,7 +26,7 @@ export function PlayerBar() {
   const isLoading = status === 'loading';
   
   // Get audio analysis data when playing
-  const { fft, volume: audioVolume, peak, silent } = useAudioAnalysis({ 
+  const { fft, volume: audioVolume, peak, silent, isCorsBlocked } = useAudioAnalysis({ 
     enabled: isPlaying,
     fps: 30 
   });
@@ -113,17 +114,32 @@ export function PlayerBar() {
           )}
         </div>
 
-        {/* Mini visualizer */}
+        {/* Mini visualizer or CORS indicator */}
         {isPlaying && (
           <div className="hidden sm:block">
-            <AudioVisualizer
-              fft={fft}
-              volume={audioVolume}
-              peak={peak}
-              silent={silent}
-              mode="bars"
-              size="sm"
-            />
+            {isCorsBlocked ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted/50 text-muted-foreground">
+                    <EyeOff className="w-4 h-4" />
+                    <span className="text-xs">Visu off</span>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Visualisation désactivée (CORS)</p>
+                  <p className="text-xs text-muted-foreground">L'audio joue normalement</p>
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <AudioVisualizer
+                fft={fft}
+                volume={audioVolume}
+                peak={peak}
+                silent={silent}
+                mode="bars"
+                size="sm"
+              />
+            )}
           </div>
         )}
 

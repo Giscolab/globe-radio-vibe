@@ -72,6 +72,7 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
     ...analysis,
     isSilent,
     isConnected: audioAnalyzer.isConnected(),
+    isCorsBlocked: audioAnalyzer.isCorsBlocked(),
   };
 }
 
