@@ -8,6 +8,7 @@ interface GenrePillsProps {
   onGenreClick?: (genre: string) => void;
   size?: 'sm' | 'md';
   className?: string;
+  insideButton?: boolean;
 }
 
 const genreColors: Record<string, string> = {
@@ -32,7 +33,8 @@ export function GenrePills({
   max = 3, 
   onGenreClick,
   size = 'sm',
-  className = '' 
+  className = '',
+  insideButton = false
 }: GenrePillsProps) {
   if (genres.length === 0 && !primaryGenre) {
     return null;
@@ -63,34 +65,70 @@ export function GenrePills({
     <div className={`flex flex-wrap gap-1 ${className}`}>
       {/* Primary genre with icon */}
       {primaryGenre && (
-        <button
-          onClick={() => handleClick(primaryGenre)}
-          className={`
-            inline-flex items-center gap-1 rounded-full transition-colors
-            ${isSmall ? 'px-2 py-0.5 text-[10px]' : 'px-2.5 py-1 text-xs'}
-            ${getColorClass(primaryGenre)}
-            ${onGenreClick ? 'cursor-pointer' : 'cursor-default'}
-          `}
-        >
-          <span>{getGenreIcon(primaryGenre)}</span>
-          <span className="capitalize">{primaryGenre}</span>
-        </button>
+        insideButton ? (
+          <span
+            onClick={(e) => { e.stopPropagation(); handleClick(primaryGenre); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); handleClick(primaryGenre); } }}
+            role="button"
+            tabIndex={0}
+            className={`
+              inline-flex items-center gap-1 rounded-full transition-colors
+              ${isSmall ? 'px-2 py-0.5 text-[10px]' : 'px-2.5 py-1 text-xs'}
+              ${getColorClass(primaryGenre)}
+              ${onGenreClick ? 'cursor-pointer' : 'cursor-default'}
+            `}
+          >
+            <span>{getGenreIcon(primaryGenre)}</span>
+            <span className="capitalize">{primaryGenre}</span>
+          </span>
+        ) : (
+          <button
+            onClick={() => handleClick(primaryGenre)}
+            className={`
+              inline-flex items-center gap-1 rounded-full transition-colors
+              ${isSmall ? 'px-2 py-0.5 text-[10px]' : 'px-2.5 py-1 text-xs'}
+              ${getColorClass(primaryGenre)}
+              ${onGenreClick ? 'cursor-pointer' : 'cursor-default'}
+            `}
+          >
+            <span>{getGenreIcon(primaryGenre)}</span>
+            <span className="capitalize">{primaryGenre}</span>
+          </button>
+        )
       )}
       
       {/* Sub-genres */}
       {displayGenres.map((genre) => (
-        <button
-          key={genre}
-          onClick={() => handleClick(genre)}
-          className={`
-            inline-flex items-center rounded-full transition-colors
-            ${isSmall ? 'px-2 py-0.5 text-[10px]' : 'px-2.5 py-1 text-xs'}
-            ${getColorClass(genre)}
-            ${onGenreClick ? 'cursor-pointer' : 'cursor-default'}
-          `}
-        >
-          <span className="capitalize">{genre}</span>
-        </button>
+        insideButton ? (
+          <span
+            key={genre}
+            onClick={(e) => { e.stopPropagation(); handleClick(genre); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); handleClick(genre); } }}
+            role="button"
+            tabIndex={0}
+            className={`
+              inline-flex items-center rounded-full transition-colors
+              ${isSmall ? 'px-2 py-0.5 text-[10px]' : 'px-2.5 py-1 text-xs'}
+              ${getColorClass(genre)}
+              ${onGenreClick ? 'cursor-pointer' : 'cursor-default'}
+            `}
+          >
+            <span className="capitalize">{genre}</span>
+          </span>
+        ) : (
+          <button
+            key={genre}
+            onClick={() => handleClick(genre)}
+            className={`
+              inline-flex items-center rounded-full transition-colors
+              ${isSmall ? 'px-2 py-0.5 text-[10px]' : 'px-2.5 py-1 text-xs'}
+              ${getColorClass(genre)}
+              ${onGenreClick ? 'cursor-pointer' : 'cursor-default'}
+            `}
+          >
+            <span className="capitalize">{genre}</span>
+          </button>
+        )
       ))}
       
       {/* Remaining count */}
