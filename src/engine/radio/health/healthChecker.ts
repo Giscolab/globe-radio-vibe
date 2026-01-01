@@ -1,4 +1,9 @@
-// Engine - Health Checker: ping stations and measure latency
+// Engine - Health Checker: ping stations via backend proxy
+
+import { supabase } from '@/integrations/supabase/client';
+import { createLogger } from '@/engine/core/logger';
+
+const log = createLogger('HealthChecker');
 
 export interface StationHealth {
   ok: boolean;
@@ -8,70 +13,91 @@ export interface StationHealth {
   statusCode?: number;
 }
 
+interface HealthCheckResponse {
+  results: Array<{
+    id: string;
+    ok: boolean;
+    latency: number | null;
+    lastChecked: number;
+    error?: string;
+    statusCode?: number;
+  }>;
+  error?: string;
+}
+
 /**
- * Check station stream health by pinging the URL
- * Uses HEAD request first, falls back to GET if not supported
+ * Check multiple stations health via backend proxy (bypasses CORS)
  */
-export async function checkStationHealth(
-  url: string, 
-  timeoutMs = 3000
-): Promise<StationHealth> {
-  const startTime = performance.now();
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+export async function checkStationsHealthBatch(
+  stations: Array<{ id: string; url: string }>,
+  timeoutMs = 5000
+): Promise<Map<string, StationHealth>> {
+  const results = new Map<string, StationHealth>();
+
+  if (stations.length === 0) return results;
 
   try {
-    // Try HEAD first (lighter)
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        method: 'HEAD',
-        signal: controller.signal,
-        mode: 'no-cors', // Many streaming servers don't allow CORS
-      });
-    } catch {
-      // HEAD might not be supported, try GET with range
-      response = await fetch(url, {
-        method: 'GET',
-        signal: controller.signal,
-        mode: 'no-cors',
-        headers: {
-          'Range': 'bytes=0-0' // Request minimal data
-        }
-      });
+    const { data, error } = await supabase.functions.invoke<HealthCheckResponse>('check-station-health', {
+      body: { urls: stations, timeoutMs }
+    });
+
+    if (error) {
+      log.warn(`Proxy error: ${error.message}`);
+      // Mark all as unknown on proxy failure
+      for (const station of stations) {
+        results.set(station.id, {
+          ok: true, // Assume ok to not block playback
+          latency: null,
+          lastChecked: Date.now(),
+          error: 'Health check unavailable',
+        });
+      }
+      return results;
     }
 
-    clearTimeout(timeoutId);
-    const latency = Math.round(performance.now() - startTime);
-
-    // In no-cors mode, we can't read status, but if we get here it's "ok"
-    return {
-      ok: true,
-      latency,
-      lastChecked: Date.now(),
-      statusCode: response.status || 0,
-    };
-
-  } catch (error) {
-    clearTimeout(timeoutId);
-    const latency = Math.round(performance.now() - startTime);
-    
-    let errorMessage = 'Unknown error';
-    if (error instanceof Error) {
-      if (error.name === 'AbortError') {
-        errorMessage = 'Timeout';
-      } else {
-        errorMessage = error.message;
+    if (data?.results) {
+      for (const result of data.results) {
+        results.set(result.id, {
+          ok: result.ok,
+          latency: result.latency,
+          lastChecked: result.lastChecked,
+          error: result.error,
+          statusCode: result.statusCode,
+        });
       }
     }
 
-    return {
-      ok: false,
-      latency: latency < timeoutMs ? latency : null,
-      lastChecked: Date.now(),
-      error: errorMessage,
-    };
+  } catch (err) {
+    log.debug(`Batch check failed: ${err}`);
+    // Graceful fallback - assume stations are ok
+    for (const station of stations) {
+      results.set(station.id, {
+        ok: true,
+        latency: null,
+        lastChecked: Date.now(),
+        error: 'Health check unavailable',
+      });
+    }
   }
+
+  return results;
+}
+
+/**
+ * Check single station health (uses batch internally)
+ */
+export async function checkStationHealth(
+  url: string,
+  timeoutMs = 5000,
+  stationId = 'unknown'
+): Promise<StationHealth> {
+  const results = await checkStationsHealthBatch([{ id: stationId, url }], timeoutMs);
+  return results.get(stationId) || {
+    ok: true,
+    latency: null,
+    lastChecked: Date.now(),
+    error: 'Health check unavailable',
+  };
 }
 
 /**
@@ -102,12 +128,15 @@ export function getHealthTier(health: StationHealth): 'healthy' | 'slow' | 'unst
  */
 export async function findHealthyUrl(
   urls: string[], 
-  timeoutMs = 3000
+  timeoutMs = 5000
 ): Promise<{ url: string; health: StationHealth } | null> {
-  for (const url of urls) {
-    const health = await checkStationHealth(url, timeoutMs);
-    if (health.ok) {
-      return { url, health };
+  const stations = urls.map((url, i) => ({ id: `url_${i}`, url }));
+  const results = await checkStationsHealthBatch(stations, timeoutMs);
+  
+  for (let i = 0; i < urls.length; i++) {
+    const health = results.get(`url_${i}`);
+    if (health?.ok) {
+      return { url: urls[i], health };
     }
   }
   return null;
