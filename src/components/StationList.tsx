@@ -1,7 +1,7 @@
 // Component - StationList: display list of enriched radio stations
-import { useState, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Radio, Play, Pause, Globe, MapPin, Wifi, Loader2, CheckCircle, XCircle } from 'lucide-react';
-import { Station, normalizeGenre } from '@/engine/types/radio';
+import { Station } from '@/engine/types/radio';
 import { usePlayer } from '@/hooks/usePlayer';
 import { useEnrichedStationsSync } from '@/hooks/useEnrichedStation';
 import { QualityBadge } from './QualityBadge';
@@ -9,7 +9,8 @@ import { PopularityIndicator } from './PopularityIndicator';
 import { GenrePills } from './GenrePills';
 import { HealthDot } from './StationHealthBadge';
 import { useRadioStore } from '@/stores/radio.store';
-import { checkStationHealth, getHealthTier } from '@/engine/radio/health/healthChecker';
+import { checkStationHealth } from '@/engine/radio/health/healthChecker';
+
 interface StationListProps {
   stations: Station[];
   isLoading?: boolean;
@@ -28,11 +29,11 @@ export function StationList({ stations, isLoading }: StationListProps) {
 
   const handleTestConnection = async (e: React.MouseEvent, station: Station) => {
     e.stopPropagation();
-    
+
     if (testingIds.has(station.id)) return;
-    
+
     setTestingIds(prev => new Set(prev).add(station.id));
-    
+
     try {
       const url = station.urlResolved || station.url;
       const health = await checkStationHealth(url!);
@@ -78,6 +79,19 @@ export function StationList({ stations, isLoading }: StationListProps) {
     setSelectedGenre(genre);
   };
 
+  const handleRowAction = (station: Station) => {
+    const isActive = currentStation?.id === station.id;
+    isActive ? toggle() : play(station);
+  };
+
+  const handleRowKeyDown = (e: React.KeyboardEvent, station: Station) => {
+    // Enter or Space should trigger the same action as click
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      handleRowAction(station);
+    }
+  };
+
   return (
     <div className="p-4 space-y-2 overflow-y-auto max-h-[calc(100vh-200px)]">
       {enrichedStations.map((station) => {
@@ -86,25 +100,28 @@ export function StationList({ stations, isLoading }: StationListProps) {
         const health = stationHealth[station.id] || null;
 
         return (
-          <button
+          <div
             key={station.id}
-            onClick={() => isActive ? toggle() : play(station)}
-            className={`w-full neo-raised p-3 transition-all hover:scale-[1.02] ${
+            role="button"
+            tabIndex={0}
+            onClick={() => handleRowAction(station)}
+            onKeyDown={(e) => handleRowKeyDown(e, station)}
+            className={`w-full neo-raised p-3 transition-all hover:scale-[1.02] focus:outline-none focus:ring-2 ${
               isActive ? 'ring-2 ring-primary neo-pressed' : ''
             }`}
             style={{
-              borderLeft: station.colors 
-                ? `3px solid ${station.colors.dominant}` 
+              borderLeft: station.colors
+                ? `3px solid ${station.colors.dominant}`
                 : undefined,
             }}
           >
             <div className="flex items-center gap-3">
               {/* Station icon/favicon */}
-              <div 
+              <div
                 className="neo-circle w-10 h-10 flex items-center justify-center flex-shrink-0 relative"
                 style={{
-                  background: station.colors 
-                    ? `linear-gradient(135deg, ${station.colors.dominant}20, ${station.colors.secondary}20)` 
+                  background: station.colors
+                    ? `linear-gradient(135deg, ${station.colors.dominant}20, ${station.colors.secondary}20)`
                     : undefined,
                 }}
               >
@@ -120,7 +137,7 @@ export function StationList({ stations, isLoading }: StationListProps) {
                 ) : (
                   <Radio className="w-5 h-5 text-primary" />
                 )}
-                
+
                 {/* Playing indicator */}
                 {isPlaying && (
                   <div className="absolute inset-0 flex items-center justify-center bg-primary/20 rounded-full animate-pulse">
@@ -138,12 +155,12 @@ export function StationList({ stations, isLoading }: StationListProps) {
                     {station.name}
                   </h4>
                   <QualityBadge tier={station.qualityTier} />
-                  <PopularityIndicator 
-                    score={station.popularityScore} 
-                    tier={station.popularityTier} 
+                  <PopularityIndicator
+                    score={station.popularityScore}
+                    tier={station.popularityTier}
                   />
                 </div>
-                
+
                 {/* Location */}
                 {station.displayLocation && (
                   <div className="flex items-center gap-1 mt-0.5 text-[10px] text-muted-foreground">
@@ -151,10 +168,10 @@ export function StationList({ stations, isLoading }: StationListProps) {
                     <span className="truncate">{station.displayLocation}</span>
                   </div>
                 )}
-                
+
                 {/* Genres */}
                 <div className="mt-1.5">
-                  <GenrePills 
+                  <GenrePills
                     genres={station.subGenres}
                     primaryGenre={station.primaryGenre}
                     max={2}
@@ -163,7 +180,7 @@ export function StationList({ stations, isLoading }: StationListProps) {
                     insideButton
                   />
                 </div>
-                
+
                 {/* Bitrate + Codec */}
                 {station.bitrate && (
                   <div className="flex items-center gap-2 mt-1">
@@ -181,6 +198,7 @@ export function StationList({ stations, isLoading }: StationListProps) {
                 disabled={testingIds.has(station.id)}
                 className="neo-raised w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 hover:scale-105 transition-transform disabled:opacity-50"
                 title="Tester la connexion"
+                aria-label={`Tester la connexion de ${station.name}`}
               >
                 {testingIds.has(station.id) ? (
                   <Loader2 className="w-4 h-4 text-muted-foreground animate-spin" />
@@ -194,17 +212,25 @@ export function StationList({ stations, isLoading }: StationListProps) {
               </button>
 
               {/* Play button */}
-              <div className={`neo-button-primary w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                isPlaying ? 'animate-pulse-glow' : ''
-              }`}>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  isPlaying ? toggle() : play(station);
+                }}
+                className={`neo-button-primary w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                  isPlaying ? 'animate-pulse-glow' : ''
+                }`}
+                aria-label={isPlaying ? `Pause ${station.name}` : `Play ${station.name}`}
+                title={isPlaying ? 'Pause' : 'Play'}
+              >
                 {isPlaying ? (
                   <Pause className="w-4 h-4" />
                 ) : (
                   <Play className="w-4 h-4 ml-0.5" />
                 )}
-              </div>
+              </button>
             </div>
-          </button>
+          </div>
         );
       })}
     </div>
