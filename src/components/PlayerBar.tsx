@@ -1,13 +1,13 @@
-import { Play, Pause, Volume2, VolumeX, Radio, AlertCircle, WifiOff, EyeOff } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, Radio, AlertCircle, WifiOff } from 'lucide-react';
 import { usePlayer } from '@/hooks/usePlayer';
 import { useRadioStore } from '@/stores/radio.store';
 import { useAudioAnalysis } from '@/hooks/useAudioAnalysis';
 import { AudioVisualizer } from './AudioVisualizer';
+import { FallbackVisualizer } from './FallbackVisualizer';
 import { QualityBadge } from './QualityBadge';
 import { StationHealthBadge } from './StationHealthBadge';
 import { enrichStationSync } from '@/engine/radio/enrichment/stationEnricher';
 import { getHealthTier } from '@/engine/radio/health';
-import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 
 export function PlayerBar() {
   const { 
@@ -114,22 +114,15 @@ export function PlayerBar() {
           )}
         </div>
 
-        {/* Mini visualizer or CORS indicator */}
+        {/* Mini visualizer - uses fallback when CORS blocks WebAudio */}
         {isPlaying && (
           <div className="hidden sm:block">
             {isCorsBlocked ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted/50 text-muted-foreground">
-                    <EyeOff className="w-4 h-4" />
-                    <span className="text-xs">Visu off</span>
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Visualisation désactivée (CORS)</p>
-                  <p className="text-xs text-muted-foreground">L'audio joue normalement</p>
-                </TooltipContent>
-              </Tooltip>
+              <FallbackVisualizer
+                isPlaying={isPlaying}
+                mode="bars"
+                size="sm"
+              />
             ) : (
               <AudioVisualizer
                 fft={fft}
