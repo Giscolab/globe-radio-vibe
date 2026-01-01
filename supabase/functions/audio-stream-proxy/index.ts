@@ -4,8 +4,8 @@
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, range',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS',
-  'Access-Control-Expose-Headers': 'Content-Type, Content-Length, Accept-Ranges',
+  'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+  'Access-Control-Expose-Headers': 'Content-Type, Content-Length, Accept-Ranges, Content-Range, X-Proxied-From',
 };
 
 Deno.serve(async (req) => {
@@ -14,7 +14,7 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  if (req.method !== 'GET') {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
       status: 405,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -63,10 +63,31 @@ Deno.serve(async (req) => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-    const response = await fetch(streamUrl, {
-      headers,
-      signal: controller.signal,
-    });
+    let response: Response;
+
+    // HEAD requests are used by health checks; some streams don't support HEAD,
+    // so we fall back to a minimal GET with Range.
+    if (req.method === 'HEAD') {
+      try {
+        response = await fetch(streamUrl, {
+          method: 'HEAD',
+          headers,
+          signal: controller.signal,
+        });
+      } catch {
+        response = await fetch(streamUrl, {
+          method: 'GET',
+          headers: { ...headers, Range: headers['Range'] ?? 'bytes=0-0' },
+          signal: controller.signal,
+        });
+      }
+    } else {
+      response = await fetch(streamUrl, {
+        method: 'GET',
+        headers,
+        signal: controller.signal,
+      });
+    }
 
     clearTimeout(timeoutId);
 
@@ -119,6 +140,14 @@ Deno.serve(async (req) => {
     const contentRange = response.headers.get('content-range');
     if (contentRange) {
       responseHeaders['Content-Range'] = contentRange;
+    }
+
+    // For HEAD requests, return headers only (no body)
+    if (req.method === 'HEAD') {
+      return new Response(null, {
+        status: response.status,
+        headers: responseHeaders,
+      });
     }
 
     // Stream the response body
