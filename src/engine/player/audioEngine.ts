@@ -2,13 +2,22 @@
 import { Howl } from 'howler';
 import { logger } from '../core/logger';
 import { Station } from '../types/radio';
-import { retryWithBackoff, RetryConfig } from './retryPolicy';
 import { playerMetrics } from './metrics';
 import { audioAnalyzer } from '../audio/audioAnalyzer';
 import { healthHistory } from '../radio/health';
 import { buildCandidateUrls, isHlsStream, browserSupportsHls } from '../radio/utils/httpsUpgrade';
 
-// Safe audio mode flag - when true, never connect WebAudio analyzer
+// =======================
+// CONFIG
+// =======================
+
+const PLAYBACK_START_TIMEOUT = 8000;
+const PROXY_TO_DIRECT_SWITCH_DELAY = 6000;
+
+// =======================
+// SAFE MODE
+// =======================
+
 let safeAudioModeEnabled = true;
 
 export function setSafeAudioMode(enabled: boolean): void {
@@ -20,6 +29,10 @@ export function isSafeAudioModeEnabled(): boolean {
   return safeAudioModeEnabled;
 }
 
+// =======================
+// TYPES
+// =======================
+
 export type PlayerStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'error';
 
 export interface AudioEngineState {
@@ -28,7 +41,6 @@ export interface AudioEngineState {
   volume: number;
   muted: boolean;
   error: string | null;
-  // Diagnostics
   currentUrl: string | null;
   urlType: 'direct' | 'proxy' | 'hls' | null;
   candidateIndex: number;
@@ -37,8 +49,9 @@ export interface AudioEngineState {
 
 type StateListener = (state: AudioEngineState) => void;
 
-// Playback start timeout in ms - if audio doesn't start within this time, try next candidate
-const PLAYBACK_START_TIMEOUT = 8000;
+// =======================
+// AUDIO ENGINE
+// =======================
 
 class AudioEngine {
   private howl: Howl | null = null;
@@ -53,10 +66,16 @@ class AudioEngine {
     candidateIndex: 0,
     totalCandidates: 0,
   };
-  private listeners: Set<StateListener> = new Set();
+
+  private listeners = new Set<StateListener>();
   private playStartTime: number | null = null;
   private analyzerConnected = false;
   private playbackTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  private proxySwitchTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  // =======================
+  // STATE MANAGEMENT
+  // =======================
 
   subscribe(listener: StateListener): () => void {
     this.listeners.add(listener);
@@ -65,9 +84,7 @@ class AudioEngine {
   }
 
   private notify(): void {
-    for (const listener of this.listeners) {
-      listener(this.state);
-    }
+    for (const l of this.listeners) l(this.state);
   }
 
   private setState(partial: Partial<AudioEngineState>): void {
@@ -79,48 +96,37 @@ class AudioEngine {
     return { ...this.state };
   }
 
-  /**
-   * Determine URL type for diagnostics
-   */
+  // =======================
+  // HELPERS
+  // =======================
+
   private getUrlType(url: string): 'direct' | 'proxy' | 'hls' {
     if (url.includes('audio-stream-proxy')) return 'proxy';
     if (isHlsStream(url)) return 'hls';
     return 'direct';
   }
 
-  /**
-   * Connect WebAudio analyzer to current Howl audio element
-   * Only connects if safe audio mode is disabled
-   */
-  private connectAnalyzer(): void {
-    // Skip analyzer connection in safe audio mode
-    if (safeAudioModeEnabled) {
-      logger.debug('AudioEngine', 'Skipping analyzer connection (safe audio mode)');
-      return;
-    }
-    
-    if (!this.howl || this.analyzerConnected) return;
-    
-    try {
-      // Access Howler's internal audio node
-      const sounds = (this.howl as any)._sounds;
-      if (sounds && sounds.length > 0) {
-        const audioNode = sounds[0]._node as HTMLAudioElement;
-        if (audioNode && audioNode.readyState >= 2) {
-          this.analyzerConnected = audioAnalyzer.connect(audioNode);
-          if (this.analyzerConnected) {
-            logger.info('AudioEngine', 'WebAudio analyzer connected');
-          }
-        }
-      }
-    } catch (error) {
-      logger.warn('AudioEngine', `Failed to connect analyzer: ${error}`);
-    }
+  private getDirectUrl(station: Station): string | null {
+    const urls = [station.urlResolved, station.url].filter(Boolean) as string[];
+    return urls.find(u => !u.includes('audio-stream-proxy')) ?? null;
   }
 
-  /**
-   * Disconnect WebAudio analyzer
-   */
+  // =======================
+  // ANALYZER
+  // =======================
+
+  private connectAnalyzer(): void {
+    if (safeAudioModeEnabled || this.analyzerConnected || !this.howl) return;
+
+    try {
+      const node = (this.howl as any)._sounds?.[0]?._node as HTMLAudioElement;
+      if (node && node.readyState >= 2) {
+        this.analyzerConnected = audioAnalyzer.connect(node);
+        logger.info('AudioEngine', 'WebAudio analyzer connected');
+      }
+    } catch {}
+  }
+
   private disconnectAnalyzer(): void {
     if (this.analyzerConnected) {
       audioAnalyzer.disconnect();
@@ -128,128 +134,127 @@ class AudioEngine {
     }
   }
 
-  /**
-   * Clear playback timeout
-   */
-  private clearPlaybackTimeout(): void {
+  // =======================
+  // CLEANUP
+  // =======================
+
+  private clearPlaybackTimeout() {
     if (this.playbackTimeoutId) {
       clearTimeout(this.playbackTimeoutId);
       this.playbackTimeoutId = null;
     }
   }
 
-  /**
-   * Try to play a specific URL, returns a promise that resolves on success or rejects on failure
-   */
-  private tryPlayUrl(url: string, station: Station): Promise<void> {
+  private clearProxySwitchTimeout() {
+    if (this.proxySwitchTimeoutId) {
+      clearTimeout(this.proxySwitchTimeoutId);
+      this.proxySwitchTimeoutId = null;
+    }
+  }
+
+  private stopInternal(): void {
+    this.clearPlaybackTimeout();
+    this.clearProxySwitchTimeout();
+    this.recordPlayTime();
+    this.disconnectAnalyzer();
+    this.setState({ status: 'idle' });
+  }
+
+  // =======================
+  // PLAYBACK CORE
+  // =======================
+
+  private async tryPlayUrl(url: string, station: Station): Promise<void> {
     return new Promise((resolve, reject) => {
       this.clearPlaybackTimeout();
-      
-      // Clean up previous howl if exists
+      this.clearProxySwitchTimeout();
+
       if (this.howl) {
         this.howl.unload();
         this.howl = null;
       }
 
       const urlType = this.getUrlType(url);
-      logger.info('AudioEngine', `Trying ${urlType} URL: ${url}`);
+      this.setState({ currentUrl: url, urlType });
 
-      this.setState({
-        currentUrl: url,
-        urlType,
-      });
+      logger.info('AudioEngine', `Trying ${urlType} URL: ${url}`);
 
       this.howl = new Howl({
         src: [url],
         html5: true,
         volume: this.state.muted ? 0 : this.state.volume,
         format: ['mp3', 'aac', 'ogg', 'opus'],
+
         onplay: () => {
           this.clearPlaybackTimeout();
           this.playStartTime = Date.now();
           this.setState({ status: 'playing', error: null });
+
           playerMetrics.recordPlay(station.id);
-          healthHistory.record({
-            stationId: station.id,
-            ok: true,
-            latency: 0,
-          });
-          
-          // Connect WebAudio analyzer after playback starts with delay
+          healthHistory.record({ stationId: station.id, ok: true, latency: 0 });
+
           setTimeout(() => this.connectAnalyzer(), 500);
-          
+
+          if (urlType === 'proxy') {
+            this.scheduleProxySwitch(station);
+          }
+
           resolve();
         },
-        onpause: () => {
-          this.setState({ status: 'paused' });
-        },
-        onstop: () => {
-          this.clearPlaybackTimeout();
-          this.recordPlayTime();
-          this.disconnectAnalyzer();
-          this.setState({ status: 'idle' });
-        },
-        onend: () => {
-          this.clearPlaybackTimeout();
-          this.recordPlayTime();
-          this.disconnectAnalyzer();
-          this.setState({ status: 'idle' });
-        },
-        onloaderror: (_, error) => {
-          this.clearPlaybackTimeout();
-          logger.warn('AudioEngine', `Load error for ${url}: ${error}`);
-          this.disconnectAnalyzer();
-          reject(new Error(`Load error: ${error}`));
-        },
-        onplayerror: (_, error) => {
-          this.clearPlaybackTimeout();
-          logger.warn('AudioEngine', `Play error for ${url}: ${error}`);
-          this.disconnectAnalyzer();
-          reject(new Error(`Play error: ${error}`));
-        },
+
+        onpause: () => this.setState({ status: 'paused' }),
+        onstop: () => this.stopInternal(),
+        onend: () => this.stopInternal(),
+
+        onloaderror: (_, err) => reject(new Error(`Load error: ${err}`)),
+        onplayerror: (_, err) => reject(new Error(`Play error: ${err}`)),
       });
 
-      // Set a timeout for playback to start
       this.playbackTimeoutId = setTimeout(() => {
-        logger.warn('AudioEngine', `Playback timeout for ${url}`);
-        reject(new Error('Playback timeout - audio did not start'));
+        reject(new Error('Playback timeout'));
       }, PLAYBACK_START_TIMEOUT);
 
       this.howl.play();
     });
   }
 
+  private scheduleProxySwitch(station: Station) {
+    this.clearProxySwitchTimeout();
+
+    this.proxySwitchTimeoutId = setTimeout(() => {
+      if (
+        this.state.status !== 'playing' ||
+        this.state.urlType !== 'proxy' ||
+        this.state.currentStation?.id !== station.id
+      ) return;
+
+      const direct = this.getDirectUrl(station);
+      if (!direct) return;
+
+      logger.info('AudioEngine', `Switching ${station.name} from proxy to direct`);
+      this.tryPlayUrl(direct, station).catch(() => {});
+    }, PROXY_TO_DIRECT_SWITCH_DELAY);
+  }
+
+  // =======================
+  // PUBLIC API
+  // =======================
+
   async play(station: Station): Promise<void> {
-    // Stop current playback
     this.stop();
 
-    // Build candidate URLs (direct + proxy fallbacks)
     const candidates = buildCandidateUrls(station);
-    
-    if (candidates.length === 0) {
-      // Check if it's an HLS stream issue
-      const rawUrls = [station.urlResolved, station.url].filter(Boolean) as string[];
-      const hasHls = rawUrls.some(u => isHlsStream(u));
-      
-      if (hasHls && !browserSupportsHls()) {
-        const error = 'Format HLS non supporté sur ce navigateur (utilisez Safari)';
-        logger.error('AudioEngine', error);
-        this.setState({
-          status: 'error',
-          currentStation: station,
-          error,
-          currentUrl: null,
-          urlType: null,
-          candidateIndex: 0,
-          totalCandidates: 0,
-        });
-        return;
-      }
-      
+
+    if (!candidates.length) {
+      const raw = [station.urlResolved, station.url].filter(Boolean);
+      const hasHls = raw.some(isHlsStream);
+
       this.setState({
         status: 'error',
         currentStation: station,
-        error: 'Aucune URL valide disponible',
+        error: hasHls && !browserSupportsHls()
+          ? 'Format HLS non supporté'
+          : 'Aucune URL valide',
         currentUrl: null,
         urlType: null,
         candidateIndex: 0,
@@ -265,66 +270,31 @@ class AudioEngine {
       totalCandidates: candidates.length,
     });
 
-    logger.debug('AudioEngine', `Candidates for ${station.name}: ${candidates.join(', ')}`);
-
-    // Try each candidate in order
     for (let i = 0; i < candidates.length; i++) {
-      const url = candidates[i];
       this.setState({ candidateIndex: i });
-      
       try {
-        logger.info('AudioEngine', `Playing ${station.name} (candidate ${i + 1}/${candidates.length})`);
-        await this.tryPlayUrl(url, station);
-        // Success! Exit the loop
-        logger.info('AudioEngine', `Successfully playing ${station.name} via ${this.getUrlType(url)}`);
+        await this.tryPlayUrl(candidates[i], station);
         return;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
-        logger.warn('AudioEngine', `Candidate ${i + 1} failed: ${message}`);
-        playerMetrics.recordError(station.id);
-        
-        // If this was the last candidate, set error state
-        if (i === candidates.length - 1) {
-          logger.error('AudioEngine', `All candidates failed for ${station.name}`);
-          this.disconnectAnalyzer();
-          this.setState({
-            status: 'error',
-            error: `Échec de lecture: ${message}`,
-          });
-        }
-        // Otherwise, continue to next candidate
-      }
+      } catch {}
     }
-  }
 
-  private recordPlayTime(): void {
-    if (this.playStartTime && this.state.currentStation) {
-      const duration = Date.now() - this.playStartTime;
-      playerMetrics.recordPlayTime(this.state.currentStation.id, duration);
-      this.playStartTime = null;
-    }
-  }
-
-  pause(): void {
-    if (this.howl && this.state.status === 'playing') {
-      this.howl.pause();
-    }
-  }
-
-  resume(): void {
-    if (this.howl && this.state.status === 'paused') {
-      this.howl.play();
-    }
+    this.setState({
+      status: 'error',
+      error: 'Échec de lecture',
+    });
   }
 
   stop(): void {
     this.clearPlaybackTimeout();
+    this.clearProxySwitchTimeout();
+
     if (this.howl) {
       this.recordPlayTime();
       this.disconnectAnalyzer();
       this.howl.unload();
       this.howl = null;
     }
+
     this.setState({
       status: 'idle',
       currentStation: null,
@@ -336,56 +306,54 @@ class AudioEngine {
     });
   }
 
+  pause(): void {
+    if (this.howl && this.state.status === 'playing') this.howl.pause();
+  }
+
+  resume(): void {
+    if (this.howl && this.state.status === 'paused') this.howl.play();
+  }
+
   toggle(): void {
-    if (this.state.status === 'playing') {
-      this.pause();
-    } else if (this.state.status === 'paused') {
-      this.resume();
-    }
+    this.state.status === 'playing' ? this.pause() : this.resume();
   }
 
   setVolume(volume: number): void {
-    const clampedVolume = Math.max(0, Math.min(1, volume));
-    this.setState({ volume: clampedVolume });
-    if (this.howl && !this.state.muted) {
-      this.howl.volume(clampedVolume);
-    }
+    const v = Math.max(0, Math.min(1, volume));
+    this.setState({ volume: v });
+    if (this.howl && !this.state.muted) this.howl.volume(v);
   }
 
   setMuted(muted: boolean): void {
     this.setState({ muted });
-    if (this.howl) {
-      this.howl.volume(muted ? 0 : this.state.volume);
-    }
+    if (this.howl) this.howl.volume(muted ? 0 : this.state.volume);
   }
 
   toggleMute(): void {
     this.setMuted(!this.state.muted);
   }
 
-  /**
-   * Check if WebAudio analyzer is connected
-   */
+  private recordPlayTime(): void {
+    if (this.playStartTime && this.state.currentStation) {
+      playerMetrics.recordPlayTime(
+        this.state.currentStation.id,
+        Date.now() - this.playStartTime
+      );
+      this.playStartTime = null;
+    }
+  }
+
   isAnalyzerConnected(): boolean {
     return this.analyzerConnected;
   }
 
-  /**
-   * Get the underlying audio element for diagnostics
-   */
   getAudioElement(): HTMLAudioElement | null {
-    if (!this.howl) return null;
     try {
-      const sounds = (this.howl as any)._sounds;
-      if (sounds && sounds.length > 0) {
-        return sounds[0]._node as HTMLAudioElement;
-      }
+      return (this.howl as any)?._sounds?.[0]?._node ?? null;
     } catch {
-      // Ignore
+      return null;
     }
-    return null;
   }
 }
 
-// Singleton instance
 export const audioEngine = new AudioEngine();
