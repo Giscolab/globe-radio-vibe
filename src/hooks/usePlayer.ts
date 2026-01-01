@@ -41,7 +41,18 @@ export function usePlayer() {
   }, []);
 
   return {
-    ...state,
+    // Core state
+    status: state.status,
+    currentStation: state.currentStation,
+    volume: state.volume,
+    muted: state.muted,
+    error: state.error,
+    // Diagnostics
+    currentUrl: state.currentUrl,
+    urlType: state.urlType,
+    candidateIndex: state.candidateIndex,
+    totalCandidates: state.totalCandidates,
+    // Actions
     play,
     pause,
     resume,

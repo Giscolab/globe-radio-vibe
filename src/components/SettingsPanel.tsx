@@ -1,11 +1,14 @@
-// Component - SettingsPanel: user settings and proxy statistics
-import { Shield, Info, BarChart3 } from 'lucide-react';
+// Component - SettingsPanel: user settings, proxy statistics, and audio diagnostics
+import { Shield, Info, BarChart3, Activity, Radio, Wifi, WifiOff } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { useSettingsStore } from '@/stores/settings.store';
 import { useRadioStore } from '@/stores/radio.store';
 import { needsProxy, setForceProxy as setForceProxyEngine } from '@/engine/radio/utils/httpsUpgrade';
-import { useMemo, useEffect } from 'react';
+import { useMemo, useEffect, useState } from 'react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { usePlayer } from '@/hooks/usePlayer';
+import { audioEngine } from '@/engine/player/audioEngine';
+import { Badge } from '@/components/ui/badge';
 
 export function SettingsPanel() {
   const { forceProxy, setForceProxy } = useSettingsStore();
@@ -141,6 +144,9 @@ export function SettingsPanel() {
         </div>
       </div>
 
+      {/* Audio Diagnostics */}
+      <AudioDiagnosticsPanel />
+
       {/* Info section */}
       <div className="text-xs text-muted-foreground space-y-2 p-3 rounded-lg bg-muted/30">
         <p>
@@ -172,6 +178,148 @@ function StatItem({
     <div className={`p-2 rounded ${highlight ? 'bg-primary/10' : ''}`}>
       <div className={`text-xl font-bold ${color}`}>{value}</div>
       <div className="text-xs text-muted-foreground">{label}</div>
+    </div>
+  );
+}
+
+/**
+ * Audio diagnostics panel for debugging playback issues
+ */
+function AudioDiagnosticsPanel() {
+  const { currentStation, status, currentUrl, urlType, candidateIndex, totalCandidates, error } = usePlayer();
+  const [audioState, setAudioState] = useState<{
+    readyState: number;
+    networkState: number;
+    currentTime: number;
+    paused: boolean;
+    error: string | null;
+  } | null>(null);
+  
+  // Update audio element state periodically when playing
+  useEffect(() => {
+    if (status !== 'playing' && status !== 'loading') {
+      setAudioState(null);
+      return;
+    }
+    
+    const updateState = () => {
+      const audioEl = audioEngine.getAudioElement();
+      if (audioEl) {
+        setAudioState({
+          readyState: audioEl.readyState,
+          networkState: audioEl.networkState,
+          currentTime: audioEl.currentTime,
+          paused: audioEl.paused,
+          error: audioEl.error?.message || null,
+        });
+      }
+    };
+    
+    updateState();
+    const interval = setInterval(updateState, 1000);
+    return () => clearInterval(interval);
+  }, [status]);
+  
+  if (!currentStation) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Activity className="w-5 h-5 text-primary" />
+          <h3 className="font-semibold text-foreground">Diagnostics Audio</h3>
+        </div>
+        <div className="neo-inset p-4 rounded-lg">
+          <p className="text-sm text-muted-foreground text-center">
+            Aucune station en cours de lecture
+          </p>
+        </div>
+      </div>
+    );
+  }
+  
+  const readyStateLabels: Record<number, string> = {
+    0: 'HAVE_NOTHING',
+    1: 'HAVE_METADATA',
+    2: 'HAVE_CURRENT_DATA',
+    3: 'HAVE_FUTURE_DATA',
+    4: 'HAVE_ENOUGH_DATA',
+  };
+  
+  const networkStateLabels: Record<number, string> = {
+    0: 'NETWORK_EMPTY',
+    1: 'NETWORK_IDLE',
+    2: 'NETWORK_LOADING',
+    3: 'NETWORK_NO_SOURCE',
+  };
+  
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <Activity className="w-5 h-5 text-primary" />
+        <h3 className="font-semibold text-foreground">Diagnostics Audio</h3>
+      </div>
+      
+      <div className="neo-inset p-4 rounded-lg space-y-3">
+        {/* Station info */}
+        <div className="flex items-center gap-2">
+          <Radio className="w-4 h-4 text-muted-foreground" />
+          <span className="text-sm font-medium truncate">{currentStation.name}</span>
+          <Badge variant={status === 'playing' ? 'default' : status === 'error' ? 'destructive' : 'secondary'}>
+            {status}
+          </Badge>
+        </div>
+        
+        {/* URL info */}
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            {urlType === 'proxy' ? (
+              <Shield className="w-4 h-4 text-emerald-500" />
+            ) : urlType === 'hls' ? (
+              <Wifi className="w-4 h-4 text-blue-500" />
+            ) : (
+              <Wifi className="w-4 h-4 text-muted-foreground" />
+            )}
+            <span className="text-xs text-muted-foreground">
+              Type: <strong>{urlType || 'N/A'}</strong>
+              {totalCandidates > 1 && ` (candidat ${candidateIndex + 1}/${totalCandidates})`}
+            </span>
+          </div>
+          {currentUrl && (
+            <p className="text-xs text-muted-foreground truncate font-mono" title={currentUrl}>
+              {currentUrl.length > 60 ? currentUrl.slice(0, 60) + '...' : currentUrl}
+            </p>
+          )}
+        </div>
+        
+        {/* Audio element state */}
+        {audioState && (
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div>
+              <span className="text-muted-foreground">readyState:</span>{' '}
+              <span className="font-mono">{readyStateLabels[audioState.readyState] || audioState.readyState}</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground">networkState:</span>{' '}
+              <span className="font-mono">{networkStateLabels[audioState.networkState] || audioState.networkState}</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground">currentTime:</span>{' '}
+              <span className="font-mono">{audioState.currentTime.toFixed(1)}s</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground">paused:</span>{' '}
+              <span className="font-mono">{audioState.paused ? 'oui' : 'non'}</span>
+            </div>
+          </div>
+        )}
+        
+        {/* Error display */}
+        {(error || audioState?.error) && (
+          <div className="flex items-center gap-2 text-xs text-destructive bg-destructive/10 p-2 rounded">
+            <WifiOff className="w-4 h-4 flex-shrink-0" />
+            <span>{error || audioState?.error}</span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

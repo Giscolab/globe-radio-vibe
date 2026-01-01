@@ -3,9 +3,9 @@
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, range',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, range, icy-metadata',
   'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
-  'Access-Control-Expose-Headers': 'Content-Type, Content-Length, Accept-Ranges, Content-Range, X-Proxied-From',
+  'Access-Control-Expose-Headers': 'Content-Type, Content-Length, Accept-Ranges, Content-Range, X-Proxied-From, X-Stream-Format, icy-name, icy-genre, icy-br',
 };
 
 Deno.serve(async (req) => {
@@ -48,15 +48,22 @@ Deno.serve(async (req) => {
   console.log(`[audio-stream-proxy] Proxying: ${streamUrl}`);
 
   try {
-    // Forward range header for seeking support
+    // Forward range header for seeking support and ICY metadata request
     const headers: HeadersInit = {
-      'User-Agent': 'GlobeRadioProxy/1.0',
+      'User-Agent': 'Mozilla/5.0 (compatible; GlobeRadioProxy/1.0)',
       'Accept': '*/*',
+      'Icy-MetaData': '0', // Request no inline metadata for simpler streaming
     };
 
     const rangeHeader = req.headers.get('range');
     if (rangeHeader) {
       headers['Range'] = rangeHeader;
+    }
+    
+    // Also try requesting ICY metadata if client wants it
+    const icyMetadata = req.headers.get('icy-metadata');
+    if (icyMetadata) {
+      headers['Icy-MetaData'] = icyMetadata;
     }
 
     // Fetch the stream with timeout
@@ -116,12 +123,17 @@ Deno.serve(async (req) => {
       contentType = mimeMap[ext || ''] || 'audio/mpeg';
     }
 
+    // Detect stream format
+    const ext = parsedUrl.pathname.split('.').pop()?.toLowerCase() || 'unknown';
+    const streamFormat = ext === 'm3u8' ? 'hls' : ext;
+
     // Build response headers
     const responseHeaders: Record<string, string> = {
       ...corsHeaders,
       'Content-Type': contentType,
       'Cache-Control': 'no-cache, no-store',
       'X-Proxied-From': parsedUrl.hostname,
+      'X-Stream-Format': streamFormat,
     };
 
     // Forward content-length if available
@@ -140,6 +152,15 @@ Deno.serve(async (req) => {
     const contentRange = response.headers.get('content-range');
     if (contentRange) {
       responseHeaders['Content-Range'] = contentRange;
+    }
+    
+    // Forward ICY headers if present
+    const icyHeaders = ['icy-name', 'icy-genre', 'icy-br', 'icy-url', 'icy-description'];
+    for (const header of icyHeaders) {
+      const value = response.headers.get(header);
+      if (value) {
+        responseHeaders[header] = value;
+      }
     }
 
     // For HEAD requests, return headers only (no body)
