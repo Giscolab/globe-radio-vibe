@@ -8,6 +8,31 @@ const corsHeaders = {
   'Access-Control-Expose-Headers': 'Content-Type, Content-Length, Accept-Ranges, Content-Range, X-Proxied-From, X-Stream-Format, icy-name, icy-genre, icy-br',
 };
 
+function parseIpv4(hostname: string): number[] | null {
+  if (!hostname.match(/^\d{1,3}(?:\.\d{1,3}){3}$/)) return null;
+  const parts = hostname.split('.').map((part) => Number(part));
+  if (parts.some((part) => Number.isNaN(part) || part < 0 || part > 255)) return null;
+  return parts;
+}
+
+function isPrivateHostname(hostname: string): boolean {
+  const lower = hostname.toLowerCase();
+  if (lower === 'localhost' || lower.endsWith('.localhost') || lower === '::1') {
+    return true;
+  }
+
+  const ipv4 = parseIpv4(lower);
+  if (!ipv4) return false;
+
+  const [first, second] = ipv4;
+  if (first === 127) return true;
+  if (first === 10) return true;
+  if (first === 172 && second >= 16 && second <= 31) return true;
+  if (first === 192 && second === 168) return true;
+
+  return false;
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -37,6 +62,12 @@ Deno.serve(async (req) => {
     parsedUrl = new URL(streamUrl);
     if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
       throw new Error('Invalid protocol');
+    }
+    if (isPrivateHostname(parsedUrl.hostname)) {
+      return new Response(JSON.stringify({ error: 'Forbidden host' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
   } catch {
     return new Response(JSON.stringify({ error: 'Invalid URL' }), {

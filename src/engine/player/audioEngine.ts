@@ -5,7 +5,8 @@ import { Station } from '../types/radio';
 import { playerMetrics } from './metrics';
 import { audioAnalyzer } from '../audio/audioAnalyzer';
 import { healthHistory } from '../radio/health';
-import { buildCandidateUrls, isHlsStream, browserSupportsHls } from '../radio/utils/httpsUpgrade';
+import { buildCandidateUrls, isHlsStream, browserSupportsHls, needsProxy } from '../radio/utils/httpsUpgrade';
+import { retryWithBackoff } from './retryPolicy';
 
 // =======================
 // CONFIG
@@ -72,6 +73,9 @@ class AudioEngine {
   private analyzerConnected = false;
   private playbackTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private proxySwitchTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  private suppressReconnect = false;
+  private reconnectInProgress = false;
+  private reconnectToken = 0;
 
   // =======================
   // STATE MANAGEMENT
@@ -203,8 +207,8 @@ class AudioEngine {
         },
 
         onpause: () => this.setState({ status: 'paused' }),
-        onstop: () => this.stopInternal(),
-        onend: () => this.stopInternal(),
+        onstop: () => this.handleStreamEnded('stop'),
+        onend: () => this.handleStreamEnded('end'),
 
         onloaderror: (_, err) => reject(new Error(`Load error: ${err}`)),
         onplayerror: (_, err) => reject(new Error(`Play error: ${err}`)),
@@ -216,6 +220,40 @@ class AudioEngine {
 
       this.howl.play();
     });
+  }
+
+  private async handleStreamEnded(reason: 'stop' | 'end'): Promise<void> {
+    if (this.suppressReconnect) {
+      this.suppressReconnect = false;
+      this.stopInternal();
+      return;
+    }
+
+    const station = this.state.currentStation;
+    this.stopInternal();
+
+    if (!station || this.reconnectInProgress) return;
+
+    this.reconnectInProgress = true;
+    const token = ++this.reconnectToken;
+
+    try {
+      await retryWithBackoff(async () => {
+        if (this.reconnectToken !== token) return;
+        if (this.state.currentStation && this.state.currentStation.id !== station.id) return;
+        await this.play(station);
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.warn('AudioEngine', `Auto-reconnect failed after ${reason}: ${message}`);
+      if (this.state.currentStation?.id === station.id) {
+        this.setState({ status: 'error', error: 'Échec de reconnexion' });
+      }
+    } finally {
+      if (this.reconnectToken === token) {
+        this.reconnectInProgress = false;
+      }
+    }
   }
 
   private scheduleProxySwitch(station: Station) {
@@ -230,9 +268,16 @@ class AudioEngine {
 
       const direct = this.getDirectUrl(station);
       if (!direct) return;
+      if (needsProxy(direct)) return;
+
+      const currentProxyUrl = this.state.currentUrl;
+      if (!currentProxyUrl) return;
 
       logger.info('AudioEngine', `Switching ${station.name} from proxy to direct`);
-      this.tryPlayUrl(direct, station).catch(() => {});
+      this.tryPlayUrl(direct, station).catch(() => {
+        if (this.state.currentStation?.id !== station.id) return;
+        this.tryPlayUrl(currentProxyUrl, station).catch(() => {});
+      });
     }, PROXY_TO_DIRECT_SWITCH_DELAY);
   }
 
@@ -241,6 +286,8 @@ class AudioEngine {
   // =======================
 
   async play(station: Station): Promise<void> {
+    this.reconnectToken++;
+    this.reconnectInProgress = false;
     this.stop();
 
     const candidates = buildCandidateUrls(station);
@@ -287,6 +334,7 @@ class AudioEngine {
   stop(): void {
     this.clearPlaybackTimeout();
     this.clearProxySwitchTimeout();
+    this.suppressReconnect = this.howl !== null;
 
     if (this.howl) {
       this.recordPlayTime();

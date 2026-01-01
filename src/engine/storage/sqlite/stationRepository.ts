@@ -28,6 +28,17 @@ interface StationRow {
   last_check_time: string | null;
 }
 
+interface PlayHistoryRow extends StationRow {
+  played_at: string;
+  duration_seconds: number;
+}
+
+export interface PlayHistoryRecord {
+  station: Station;
+  playedAt: string;
+  durationSeconds: number;
+}
+
 function rowToStation(row: StationRow): Station {
   return {
     id: row.id,
@@ -205,14 +216,18 @@ export class SqliteStationRepository implements IStationRepository {
     );
   }
 
-  getPlayHistory(limit: number = 100): Station[] {
-    const rows = this.getDb().selectObjects<StationRow>(
-      `SELECT DISTINCT s.* FROM stations s
+  getPlayHistory(limit: number = 100): PlayHistoryRecord[] {
+    const rows = this.getDb().selectObjects<PlayHistoryRow>(
+      `SELECT s.*, h.played_at, h.duration_seconds FROM stations s
        INNER JOIN play_history h ON s.id = h.station_id
        ORDER BY h.played_at DESC LIMIT ?`,
       [limit]
     );
-    return rows.map(rowToStation);
+    return rows.map((row) => ({
+      station: rowToStation(row),
+      playedAt: row.played_at,
+      durationSeconds: row.duration_seconds || 0,
+    }));
   }
 
   clearHistory(): void {

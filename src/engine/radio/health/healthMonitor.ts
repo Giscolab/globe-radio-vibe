@@ -19,6 +19,7 @@ class HealthMonitor {
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private isRunning = false;
   private isPaused = false;
+  private cursor = 0;
 
   constructor() {
     // Pause when tab is hidden to save resources
@@ -145,7 +146,14 @@ class HealthMonitor {
 
     // Limit to prevent overwhelming the backend
     const MAX_CHECKS_PER_CYCLE = 10;
-    const stationsToCheck = stations.slice(0, MAX_CHECKS_PER_CYCLE);
+    const count = Math.min(MAX_CHECKS_PER_CYCLE, stations.length);
+    const stationsToCheck: MonitoredStation[] = [];
+
+    for (let i = 0; i < count; i++) {
+      stationsToCheck.push(stations[(this.cursor + i) % stations.length]);
+    }
+
+    this.cursor = (this.cursor + stationsToCheck.length) % stations.length;
     
     log.debug(`Checking ${stationsToCheck.length} stations`);
 
