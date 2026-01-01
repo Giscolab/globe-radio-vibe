@@ -6,6 +6,7 @@ import { retryWithBackoff, RetryConfig } from './retryPolicy';
 import { playerMetrics } from './metrics';
 import { audioAnalyzer } from '../audio/audioAnalyzer';
 import { checkStationHealth, healthHistory } from '../radio/health';
+import { getSecureStreamUrl } from '../radio/utils/httpsUpgrade';
 
 export type PlayerStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'error';
 
@@ -94,7 +95,11 @@ class AudioEngine {
       error: null,
     });
 
-    const urls = [station.urlResolved, station.url].filter(Boolean) as string[];
+    // Get secure URLs (HTTPS or proxied)
+    const rawUrls = [station.urlResolved, station.url].filter(Boolean) as string[];
+    const urls = rawUrls.map(url => getSecureStreamUrl(url));
+    
+    logger.debug('AudioEngine', `Secure URLs: ${urls.join(', ')}`);
     
     // Quick health check before playing
     const primaryUrl = urls[0];
