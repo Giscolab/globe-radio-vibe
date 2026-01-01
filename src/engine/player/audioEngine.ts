@@ -53,6 +53,10 @@ type StateListener = (state: AudioEngineState) => void;
 // =======================
 // AUDIO ENGINE
 // =======================
+// Invariants:
+// 1) audioEngine is the single source of truth for playback state (stores only mirror).
+// 2) Never drop a playing stream without a valid fallback (proxy <-> direct guarded).
+// 3) Only one transition at a time (guarded by transitionToken / isTransitioning).
 
 class AudioEngine {
   private howl: Howl | null = null;
@@ -76,6 +80,8 @@ class AudioEngine {
   private suppressReconnect = false;
   private reconnectInProgress = false;
   private reconnectToken = 0;
+  private isTransitioning = false;
+  private transitionToken = 0;
 
   // =======================
   // STATE MANAGEMENT
@@ -135,6 +141,18 @@ class AudioEngine {
     if (this.analyzerConnected) {
       audioAnalyzer.disconnect();
       this.analyzerConnected = false;
+    }
+  }
+
+  private beginTransition(): number {
+    this.isTransitioning = true;
+    this.transitionToken += 1;
+    return this.transitionToken;
+  }
+
+  private endTransition(token: number): void {
+    if (this.transitionToken === token) {
+      this.isTransitioning = false;
     }
   }
 
@@ -286,49 +304,60 @@ class AudioEngine {
   // =======================
 
   async play(station: Station): Promise<void> {
-    this.reconnectToken++;
-    this.reconnectInProgress = false;
-    this.stop();
+    const transitionToken = this.beginTransition();
 
-    const candidates = buildCandidateUrls(station);
+    try {
+      this.reconnectToken++;
+      this.reconnectInProgress = false;
+      this.stop();
 
-    if (!candidates.length) {
-      const raw = [station.urlResolved, station.url].filter(Boolean);
-      const hasHls = raw.some(isHlsStream);
+      const candidates = buildCandidateUrls(station);
+
+      if (this.transitionToken !== transitionToken) return;
+
+      if (!candidates.length) {
+        const raw = [station.urlResolved, station.url].filter(Boolean);
+        const hasHls = raw.some(isHlsStream);
+
+        this.setState({
+          status: 'error',
+          currentStation: station,
+          error: hasHls && !browserSupportsHls()
+            ? 'Format HLS non supporté'
+            : 'Aucune URL valide',
+          currentUrl: null,
+          urlType: null,
+          candidateIndex: 0,
+          totalCandidates: 0,
+        });
+        return;
+      }
+
+      this.setState({
+        status: 'loading',
+        currentStation: station,
+        error: null,
+        totalCandidates: candidates.length,
+      });
+
+      for (let i = 0; i < candidates.length; i++) {
+        if (this.transitionToken !== transitionToken) return;
+        this.setState({ candidateIndex: i });
+        try {
+          await this.tryPlayUrl(candidates[i], station);
+          return;
+        } catch {}
+      }
+
+      if (this.transitionToken !== transitionToken) return;
 
       this.setState({
         status: 'error',
-        currentStation: station,
-        error: hasHls && !browserSupportsHls()
-          ? 'Format HLS non supporté'
-          : 'Aucune URL valide',
-        currentUrl: null,
-        urlType: null,
-        candidateIndex: 0,
-        totalCandidates: 0,
+        error: 'Échec de lecture',
       });
-      return;
+    } finally {
+      this.endTransition(transitionToken);
     }
-
-    this.setState({
-      status: 'loading',
-      currentStation: station,
-      error: null,
-      totalCandidates: candidates.length,
-    });
-
-    for (let i = 0; i < candidates.length; i++) {
-      this.setState({ candidateIndex: i });
-      try {
-        await this.tryPlayUrl(candidates[i], station);
-        return;
-      } catch {}
-    }
-
-    this.setState({
-      status: 'error',
-      error: 'Échec de lecture',
-    });
   }
 
   stop(): void {

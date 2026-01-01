@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { Sparkles, RefreshCw, Radio } from 'lucide-react';
 import { useRadioStore } from '@/stores/radio';
-import { getRecommendations } from '@/engine/radio/ai/searchAI';
+import { aiEngine } from '@/engine/radio/ai';
 import { usePlayer } from '@/hooks/usePlayer';
 
 export function RecommendationsPanel() {
@@ -16,7 +16,7 @@ export function RecommendationsPanel() {
     setIsLoading(true);
     try {
       const historyStations = history.slice(0, 10).map(h => h.station);
-      const recs = await getRecommendations(historyStations, favorites, stations, 6);
+      const recs = await aiEngine.recommend(historyStations, favorites, stations, 6);
       setRecommendations(recs);
     } catch (error) {
       console.error('Failed to load recommendations:', error);

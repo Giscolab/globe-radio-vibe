@@ -1,4 +1,4 @@
-// Store - Radio State (pure state + setters, no business logic)
+// Store - Radio State (projection of engine state; never a playback source of truth)
 import { create } from 'zustand';
 import type { Station } from '@/engine/types';
 import type { StationHealth } from '@/engine/radio/health';

@@ -46,12 +46,11 @@ export function useHistory() {
       if (pendingAdds.current.has(key)) return;
       pendingAdds.current.add(key);
 
-      storeAddToHistory(station, durationSeconds);
-
       try {
         const repo = getSqliteRepository();
         repo.upsert(station);
         repo.recordPlay(station.id, durationSeconds);
+        storeAddToHistory(station, durationSeconds);
       } catch (error) {
         console.error('Failed to persist play history:', error);
       } finally {
