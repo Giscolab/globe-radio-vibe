@@ -124,6 +124,14 @@ export class CountryIndex {
   }
 
   /**
+   * Get country by ISO2 code (e.g., 'FR', 'US')
+   */
+  getCountryByIso2(iso2: string): CountryData | undefined {
+    const upperIso2 = iso2.toUpperCase();
+    return Array.from(this.countries.values()).find(c => c.iso2?.toUpperCase() === upperIso2);
+  }
+
+  /**
    * Get countries within bounds
    */
   getCountriesInBounds(bounds: GeoBounds): CountryData[] {

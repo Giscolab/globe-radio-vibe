@@ -3,7 +3,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { loadWorldAtlas, topoToGeoJson, CountryIndex, findCountryAtPoint, latLonToXYZ, xyzToLatLon } from '@/engine';
-import { useGeoStore } from '@/stores/geo.store';
+import { useGeoStore, DEFAULT_COUNTRY_CODE } from '@/stores/geo.store';
 import { useRadioStore } from '@/stores/radio.store';
 import { usePlayer } from '@/hooks/usePlayer';
 import { StationsLayer } from './StationsLayer';
@@ -126,7 +126,7 @@ function GlobePicker({ countryIndex }: GlobePickerProps) {
 function GlobeScene() {
   const [features, setFeatures] = useState<Feature<Polygon | MultiPolygon>[]>([]);
   const [countryIndex, setCountryIndex] = useState<CountryIndex | null>(null);
-  const { setLoading, setError, selectedCountry } = useGeoStore();
+  const { setLoading, setError, selectedCountry, setSelectedCountry, defaultCountryInitialized, setDefaultCountryInitialized } = useGeoStore();
   
   // Get stations from the store (both top and country-specific)
   const { stations: countryStations, topStations } = useRadioStore();
@@ -148,6 +148,15 @@ function GlobeScene() {
         
         setFeatures(geoJson.features as Feature<Polygon | MultiPolygon>[]);
         setCountryIndex(index);
+        
+        // Select default country (France) on first load
+        if (!defaultCountryInitialized) {
+          const defaultCountry = index.getCountryByIso2(DEFAULT_COUNTRY_CODE);
+          if (defaultCountry) {
+            setSelectedCountry(defaultCountry);
+          }
+          setDefaultCountryInitialized(true);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load geo data');
       } finally {
@@ -155,7 +164,7 @@ function GlobeScene() {
       }
     }
     loadGeo();
-  }, [setLoading, setError]);
+  }, [setLoading, setError, setSelectedCountry, defaultCountryInitialized, setDefaultCountryInitialized]);
 
   return (
     <>
