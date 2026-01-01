@@ -1,4 +1,4 @@
-import { Play, Pause, Volume2, VolumeX, Radio, AlertCircle, WifiOff } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, Radio, AlertCircle, WifiOff, Shield } from 'lucide-react';
 import { usePlayer } from '@/hooks/usePlayer';
 import { useRadioStore } from '@/stores/radio.store';
 import { useAudioAnalysis } from '@/hooks/useAudioAnalysis';
@@ -8,6 +8,8 @@ import { QualityBadge } from './QualityBadge';
 import { StationHealthBadge } from './StationHealthBadge';
 import { enrichStationSync } from '@/engine/radio/enrichment/stationEnricher';
 import { getHealthTier } from '@/engine/radio/health';
+import { needsProxy } from '@/engine/radio/utils/httpsUpgrade';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 export function PlayerBar() {
   const { 
@@ -37,6 +39,9 @@ export function PlayerBar() {
   // Get health status
   const health = currentStation ? stationHealth[currentStation.id] : null;
   const isUnstable = health && !health.ok;
+  
+  // Check if station uses proxy
+  const isProxied = currentStation?.url ? needsProxy(currentStation.url) : false;
 
   return (
     <div className="neo-raised-lg p-4">
@@ -86,6 +91,19 @@ export function PlayerBar() {
                 )}
                 {health && (
                   <StationHealthBadge health={health} size="sm" />
+                )}
+                {isProxied && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 text-xs">
+                        <Shield className="w-3 h-3" />
+                        <span className="hidden sm:inline">Proxy</span>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Flux sécurisé via proxy HTTPS</p>
+                    </TooltipContent>
+                  </Tooltip>
                 )}
               </div>
               <p className="text-sm text-muted-foreground truncate">
