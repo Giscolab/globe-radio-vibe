@@ -23,7 +23,7 @@ export function useIsMobile(): boolean {
     if (media.addEventListener) {
       media.addEventListener("change", listener);
     } else {
-      // @ts-ignore
+      // @ts-expect-error - legacy Safari support
       media.addListener(listener);
     }
 
@@ -31,7 +31,7 @@ export function useIsMobile(): boolean {
       if (media.removeEventListener) {
         media.removeEventListener("change", listener);
       } else {
-        // @ts-ignore
+        // @ts-expect-error - legacy Safari support
         media.removeListener(listener);
       }
     };

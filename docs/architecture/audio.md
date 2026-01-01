@@ -1,13 +1,15 @@
-# Audio architecture (invariants)
+# Audio Engine Invariants
 
-- `audioEngine` is the single source of truth for playback state.
-- Stores mirror `audioEngine` state; they never drive playback.
-- A stream is never interrupted without a valid fallback candidate.
-- Proxy ➜ direct switch happens only when `needsProxy === false`.
-- If a direct switch fails, we roll back to the last proxy URL.
-- Only one playback transition can run at a time.
-- Retries are allowed only inside the engine retry policy.
-- UI components may call `play/pause/stop/toggle` only.
-- UI must not call `tryPlayUrl` or mutate engine internals.
-- AI can suggest stations but never trigger playback directly.
-- History entries are written to DB first, then reflected in store/UI.
+Le moteur audio (`src/engine/player/audioEngine.ts`) est la source de vérité de la lecture.  
+Les stores et l’UI ne simulent jamais l’état audio (ils reflètent uniquement les callbacks réels).
+
+## Responsabilités
+- **audioEngine** : pilote la lecture (play/pause/stop), la transition de flux et les erreurs.
+- **UI/stores** : observent l’état et déclenchent des actions, sans forcer un état cosmétique.
+- **fallbacks** : si un flux proxy est actif, le passage au direct se fait sans interrompre la lecture.
+
+## Invariants concrets
+1. Une seule transition à la fois (play/stop/switch), les appels sont sérialisés.
+2. Le changement proxy → direct est tenté uniquement si la lecture est stable, avec repli immédiat.
+3. Aucun `setIsPlaying` “cosmétique” côté UI : le statut provient toujours de `audioEngine`.
+4. Les erreurs sont visibles et actionnables, avec possibilité de relancer la lecture.

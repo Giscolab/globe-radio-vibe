@@ -11,6 +11,7 @@ interface LogEntry {
 
 class Logger {
   private level: LogLevel = 'info';
+  private enabled = true;
   private listeners: ((entry: LogEntry) => void)[] = [];
 
   private readonly levelPriority: Record<LogLevel, number> = {
@@ -24,6 +25,10 @@ class Logger {
     this.level = level;
   }
 
+  setEnabled(enabled: boolean): void {
+    this.enabled = enabled;
+  }
+
   addListener(listener: (entry: LogEntry) => void): () => void {
     this.listeners.push(listener);
     return () => {
@@ -33,6 +38,10 @@ class Logger {
   }
 
   private log(level: LogLevel, module: string, message: string, data?: unknown): void {
+    if (!this.enabled) {
+      return;
+    }
+
     if (this.levelPriority[level] < this.levelPriority[this.level]) {
       return;
     }

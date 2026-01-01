@@ -99,6 +99,25 @@ const migrations: Migration[] = [
       `);
     },
   },
+  {
+    version: 6,
+    name: 'create_ai_signals',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS ai_signals (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          station_id TEXT NOT NULL,
+          type TEXT NOT NULL,
+          duration_seconds INTEGER DEFAULT 0,
+          details TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY (station_id) REFERENCES stations(id) ON DELETE CASCADE
+        )
+      `);
+      db.exec('CREATE INDEX IF NOT EXISTS idx_ai_signals_type ON ai_signals(type)');
+      db.exec('CREATE INDEX IF NOT EXISTS idx_ai_signals_created_at ON ai_signals(created_at DESC)');
+    },
+  },
 ];
 
 function getCurrentVersion(db: SqliteDatabase): number {

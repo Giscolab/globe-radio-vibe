@@ -10,6 +10,7 @@ import { GenrePills } from './GenrePills';
 import { HealthDot } from './StationHealthBadge';
 import { useRadioStore } from '@/stores/radio';
 import { checkStationHealth } from '@/engine/radio/health/healthChecker';
+import { shallow } from 'zustand/shallow';
 
 interface StationListProps {
   stations: Station[];
@@ -18,7 +19,14 @@ interface StationListProps {
 
 export function StationList({ stations, isLoading }: StationListProps) {
   const { currentStation, status, play, toggle } = usePlayer();
-  const { setSelectedGenre, stationHealth, setStationHealth } = useRadioStore();
+  const { setSelectedGenre, stationHealth, setStationHealth } = useRadioStore(
+    (state) => ({
+      setSelectedGenre: state.setSelectedGenre,
+      stationHealth: state.stationHealth,
+      setStationHealth: state.setStationHealth,
+    }),
+    shallow
+  );
   const enrichedStations = useEnrichedStationsSync(stations);
   const [testingIds, setTestingIds] = useState<Set<string>>(new Set());
   const [brokenFavicons, setBrokenFavicons] = useState<Set<string>>(new Set());
@@ -81,7 +89,11 @@ export function StationList({ stations, isLoading }: StationListProps) {
 
   const handleRowAction = (station: Station) => {
     const isActive = currentStation?.id === station.id;
-    isActive ? toggle() : play(station);
+    if (isActive) {
+      toggle();
+    } else {
+      play(station);
+    }
   };
 
   const handleRowKeyDown = (e: React.KeyboardEvent, station: Station) => {
@@ -215,7 +227,11 @@ export function StationList({ stations, isLoading }: StationListProps) {
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  isPlaying ? toggle() : play(station);
+                  if (isPlaying) {
+                    toggle();
+                  } else {
+                    play(station);
+                  }
                 }}
                 className={`neo-button-primary w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
                   isPlaying ? 'animate-pulse-glow' : ''

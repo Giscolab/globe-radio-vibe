@@ -1,6 +1,7 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { useRadioStore } from '@/stores/radio';
 import { getSqliteRepository } from '@/engine/storage/sqlite/stationRepository';
+import { aiEngine } from '@/engine/radio/ai';
 import type { Station } from '@/engine/types';
 
 export function useFavorites() {
@@ -50,10 +51,13 @@ export function useFavorites() {
 
         if (wasFavorite) {
           repo.removeFavorite(id);
+          repo.recordSignal('favorite_remove', id);
         } else {
           repo.upsert(station);
           repo.addFavorite(id);
+          repo.recordSignal('favorite_add', id);
         }
+        aiEngine.invalidateCache();
       } catch (error) {
         console.error('Failed to persist favorite:', error);
         // rollback

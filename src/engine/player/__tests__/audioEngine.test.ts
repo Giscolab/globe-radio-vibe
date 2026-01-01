@@ -99,7 +99,7 @@ describe('Audio Engine', () => {
     it('should give up after max retries', () => {
       const maxRetries = 3;
       let attempts = 0;
-      let success = false;
+      const success = false;
 
       while (attempts < maxRetries) {
         attempts++;

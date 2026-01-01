@@ -47,7 +47,7 @@ describe('SQLite Database', () => {
 
   describe('CRUD Operations', () => {
     it('should insert station', () => {
-      const stations: any[] = [];
+      const stations: Array<{ id: string; name: string }> = [];
       stations.push({ id: '1', name: 'Test Radio' });
       
       expect(stations).toHaveLength(1);
@@ -136,7 +136,7 @@ describe('SQLite Database', () => {
 
   describe('Play History', () => {
     it('should record play', () => {
-      const history: any[] = [];
+      const history: Array<{ stationId: string; playedAt: Date }> = [];
       history.push({ stationId: '1', playedAt: new Date() });
       
       expect(history).toHaveLength(1);
@@ -178,8 +178,10 @@ describe('SQLite Database', () => {
     });
 
     it('should validate imported data', () => {
-      const isValid = (data: any) => {
-        return data && Array.isArray(data.stations);
+      const isValid = (data: unknown): data is { stations: unknown[] } => {
+        if (!data || typeof data !== 'object') return false;
+        const record = data as { stations?: unknown };
+        return Array.isArray(record.stations);
       };
       
       expect(isValid({ stations: [] })).toBe(true);

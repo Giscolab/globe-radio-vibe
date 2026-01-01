@@ -239,7 +239,9 @@ function TestBeepButton() {
     setResult(null);
     
     try {
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const WebkitAudioContext = (window as Window & { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
+      const audioContext = new (window.AudioContext || WebkitAudioContext)();
       const oscillator = audioContext.createOscillator();
       const gainNode = audioContext.createGain();
       

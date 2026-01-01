@@ -11,6 +11,26 @@ export type SqliteDatabase = {
 
 export type StorageMode = 'opfs' | 'memory';
 
+type SqliteExecOptions<Row> = {
+  sql: string;
+  bind?: unknown[];
+  rowMode?: 'object' | 'array';
+  callback?: (row: Row) => boolean | void;
+};
+
+type SqliteWasmDb = {
+  exec: (options: string | SqliteExecOptions<unknown>) => void;
+  changes: () => number;
+  close: () => void;
+};
+
+type SqliteWasmModule = {
+  oo1: {
+    DB: new (filename: string) => SqliteWasmDb;
+    OpfsDb?: new (filename: string) => SqliteWasmDb;
+  };
+};
+
 interface DatabaseState {
   db: SqliteDatabase | null;
   mode: StorageMode;
@@ -41,12 +61,12 @@ async function detectOPFS(): Promise<boolean> {
   }
 }
 
-async function loadSqliteWasm(): Promise<any> {
+async function loadSqliteWasm(): Promise<SqliteWasmModule> {
   try {
     // Dynamic import for code splitting
     const sqlite3InitModule = await import('@sqlite.org/sqlite-wasm');
     const sqlite3 = await sqlite3InitModule.default();
-    return sqlite3;
+    return sqlite3 as SqliteWasmModule;
   } catch (error) {
     logger.error('Storage', 'Failed to load SQLite WASM:', error);
     throw error;
@@ -63,7 +83,7 @@ export async function initDatabase(): Promise<SqliteDatabase> {
   const sqlite3 = await loadSqliteWasm();
   const opfsAvailable = await detectOPFS();
 
-  let db: any;
+  let db: SqliteWasmDb;
 
   if (opfsAvailable && sqlite3.oo1.OpfsDb) {
     try {
@@ -92,7 +112,7 @@ export async function initDatabase(): Promise<SqliteDatabase> {
     },
     selectObjects: <T>(sql: string, params?: unknown[]): T[] => {
       const result: T[] = [];
-      const options: any = {
+      const options: SqliteExecOptions<T> = {
         sql,
         rowMode: 'object',
         callback: (row: T) => {
@@ -108,7 +128,7 @@ export async function initDatabase(): Promise<SqliteDatabase> {
     },
     selectValue: (sql: string, params?: unknown[]): unknown => {
       let value: unknown = null;
-      const options: any = {
+      const options: SqliteExecOptions<unknown[]> = {
         sql,
         rowMode: 'array',
         callback: (row: unknown[]) => {
