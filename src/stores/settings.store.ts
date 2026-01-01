@@ -1,27 +1,55 @@
-// Store - Settings: user preferences including proxy settings
+// Store - Settings: user preferences with persistence and versioning
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+// ============= Types =============
 interface SettingsState {
   // Proxy settings
   forceProxy: boolean;
-  setForceProxy: (force: boolean) => void;
-  
-  // Safe audio mode - disables WebAudio analyzer for maximum compatibility
+  // Audio safety - disables WebAudio analyzer for maximum compatibility
   safeAudioMode: boolean;
-  setSafeAudioMode: (safe: boolean) => void;
 }
 
-export const useSettingsStore = create<SettingsState>()(
+interface SettingsActions {
+  setForceProxy: (force: boolean) => void;
+  setSafeAudioMode: (safe: boolean) => void;
+  resetSettings: () => void;
+}
+
+// ============= Initial State =============
+const initialState: SettingsState = {
+  forceProxy: false,
+  safeAudioMode: true, // Default ON for maximum compatibility
+};
+
+// ============= Store =============
+export const useSettingsStore = create<SettingsState & SettingsActions>()(
   persist(
     (set) => ({
-      forceProxy: false,
+      ...initialState,
+
       setForceProxy: (force) => set({ forceProxy: force }),
-      safeAudioMode: true, // Default ON for maximum compatibility
       setSafeAudioMode: (safe) => set({ safeAudioMode: safe }),
+
+      resetSettings: () => set({ ...initialState }),
     }),
     {
       name: 'radio-settings',
+      version: 1,
+      migrate: (persisted, version) => {
+        // Handle migration from older versions
+        if (version === 0) {
+          return {
+            ...(persisted as object),
+            safeAudioMode: true,
+          };
+        }
+        return persisted as SettingsState & SettingsActions;
+      },
     }
   )
 );
+
+// ============= Selectors =============
+export const selectForceProxy = (s: SettingsState) => s.forceProxy;
+export const selectSafeAudioMode = (s: SettingsState) => s.safeAudioMode;
