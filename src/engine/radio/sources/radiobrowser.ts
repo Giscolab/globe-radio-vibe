@@ -2,6 +2,7 @@
 import { Station, RadioBrowserStationSchema, StationSchema } from '../../types/radio';
 import { logger } from '../../core/logger';
 import { radioBrowserThrottler } from '../../core/throttle';
+import { canUpgradeToHttps, upgradeToHttps as upgradeUrlToHttps } from '../utils/httpsUpgrade';
 import { z } from 'zod';
 
 const RADIOBROWSER_SERVERS = [
@@ -20,7 +21,7 @@ function getNextServer(): string {
 
 /**
  * Upgrade HTTP URL to HTTPS if possible
- * Many radio streams support both protocols
+ * Uses the comprehensive httpsUpgrade utility
  */
 function upgradeToHttps(url: string): string {
   if (!url) return url;
@@ -28,47 +29,9 @@ function upgradeToHttps(url: string): string {
   // Already HTTPS
   if (url.startsWith('https://')) return url;
   
-  // Common patterns that support HTTPS
-  const httpsCompatibleDomains = [
-    'icecast.radiofrance.fr',
-    'stream.radiofrance.fr',
-    'radioparadise.com',
-    'bbcmedia.co.uk',
-    'bbc.co.uk',
-    'laut.fm',
-    'streamtheworld.com',
-    'live365.com',
-    'radionomy.com',
-    'shoutcast.com',
-    'akamaized.net',
-    'cloudfront.net',
-    'stream.laut.fm',
-    'sslstream.dlf.de',
-    'rndfnk.com',
-    'swr.de',
-    'br.de',
-    'ndr.de',
-    'wdr.de',
-    'mdr.de',
-    'rbb-online.de',
-    'deutschlandradio.de',
-  ];
-  
-  try {
-    const urlObj = new URL(url);
-    const hostname = urlObj.hostname.toLowerCase();
-    
-    // Check if domain is known to support HTTPS
-    const supportsHttps = httpsCompatibleDomains.some(domain => 
-      hostname.includes(domain)
-    );
-    
-    if (supportsHttps) {
-      urlObj.protocol = 'https:';
-      return urlObj.toString();
-    }
-  } catch {
-    // Invalid URL, return as-is
+  // Check if domain supports HTTPS and upgrade
+  if (canUpgradeToHttps(url)) {
+    return upgradeUrlToHttps(url);
   }
   
   return url;
