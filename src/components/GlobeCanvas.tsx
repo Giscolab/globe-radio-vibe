@@ -4,7 +4,7 @@ import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { loadWorldAtlas, topoToGeoJson, CountryIndex, findCountryAtPoint, latLonToXYZ, xyzToLatLon } from '@/engine';
 import { useGeoStore, DEFAULT_COUNTRY_CODE } from '@/stores/geo.store';
-import { useRadioStore } from '@/stores/radio.store';
+import { useRadioStore } from '@/stores/radio';
 import { usePlayer } from '@/hooks/usePlayer';
 import { StationsLayer } from './StationsLayer';
 import type { Feature, Polygon, MultiPolygon } from 'geojson';

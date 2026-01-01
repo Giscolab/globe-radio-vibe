@@ -1,7 +1,7 @@
 // Recommendations Panel - Personalized station suggestions
 import { useState, useEffect } from 'react';
 import { Sparkles, RefreshCw, Radio } from 'lucide-react';
-import { useRadioStore } from '@/stores/radio.store';
+import { useRadioStore } from '@/stores/radio';
 import { getRecommendations } from '@/engine/radio/ai/searchAI';
 import { usePlayer } from '@/hooks/usePlayer';
 

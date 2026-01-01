@@ -1,7 +1,7 @@
 // Component - SearchBar: neumorphic search input with debounce
 import { useState, useEffect, useCallback } from 'react';
 import { Search, X } from 'lucide-react';
-import { useRadioStore } from '@/stores/radio.store';
+import { useRadioStore } from '@/stores/radio';
 
 interface SearchBarProps {
   placeholder?: string;

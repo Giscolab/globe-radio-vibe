@@ -8,7 +8,7 @@ import { QualityBadge } from './QualityBadge';
 import { PopularityIndicator } from './PopularityIndicator';
 import { GenrePills } from './GenrePills';
 import { HealthDot } from './StationHealthBadge';
-import { useRadioStore } from '@/stores/radio.store';
+import { useRadioStore } from '@/stores/radio';
 import { checkStationHealth } from '@/engine/radio/health/healthChecker';
 
 interface StationListProps {

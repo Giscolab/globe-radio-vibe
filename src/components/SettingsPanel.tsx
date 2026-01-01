@@ -3,7 +3,7 @@ import { Shield, Info, BarChart3, Activity, Radio, Wifi, WifiOff, Volume2, Headp
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { useSettingsStore } from '@/stores/settings.store';
-import { useRadioStore } from '@/stores/radio.store';
+import { useRadioStore } from '@/stores/radio';
 import { needsProxy, setForceProxy as setForceProxyEngine } from '@/engine/radio/utils/httpsUpgrade';
 import { setSafeAudioMode as setSafeAudioModeEngine } from '@/engine/player/audioEngine';
 import { useMemo, useEffect, useState, useCallback } from 'react';

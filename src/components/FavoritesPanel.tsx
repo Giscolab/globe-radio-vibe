@@ -1,7 +1,7 @@
 // Component - FavoritesPanel: display favorite stations
 import { Heart, Play, Radio } from 'lucide-react';
 import { useFavorites } from '@/hooks/useFavorites';
-import { useRadioStore } from '@/stores/radio.store';
+import { useRadioStore } from '@/stores/radio';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { Station } from '@/engine/types';
 

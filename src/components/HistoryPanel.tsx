@@ -1,7 +1,7 @@
 // Component - HistoryPanel: display play history
 import { History, Play, Trash2, Radio } from 'lucide-react';
 import { useHistory } from '@/hooks/useHistory';
-import { useRadioStore } from '@/stores/radio.store';
+import { useRadioStore } from '@/stores/radio';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { Station } from '@/engine/types';
 

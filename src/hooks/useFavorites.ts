@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useRef } from 'react';
-import { useRadioStore } from '@/stores/radio.store';
+import { useRadioStore } from '@/stores/radio';
 import { getSqliteRepository } from '@/engine/storage/sqlite/stationRepository';
 import type { Station } from '@/engine/types';
 
