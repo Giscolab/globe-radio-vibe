@@ -22,14 +22,12 @@ export function useHistory() {
     const loadHistory = async () => {
       try {
         const repo = getSqliteRepository();
-        // Note: getPlayHistory returns Station[], not PlayRecord[]
-        // We create PlayRecord with current date as we don't have the original playedAt
-        const stations = repo.getPlayHistory(100);
+        const records = repo.getPlayHistory(100);
 
-        const mapped: PlayRecord[] = stations.map((station) => ({
-          station,
-          playedAt: new Date(), // SQLite doesn't return playedAt per station
-          durationSeconds: 0,
+        const mapped: PlayRecord[] = records.map((record) => ({
+          station: record.station,
+          playedAt: new Date(record.playedAt),
+          durationSeconds: record.durationSeconds,
         }));
 
         setHistory(mapped);

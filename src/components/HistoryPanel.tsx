@@ -1,7 +1,7 @@
 // Component - HistoryPanel: display play history
 import { History, Play, Trash2, Radio } from 'lucide-react';
 import { useHistory } from '@/hooks/useHistory';
-import { useRadioStore } from '@/stores/radio';
+import { usePlayer } from '@/hooks/usePlayer';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { Station } from '@/engine/types';
 
@@ -20,11 +20,14 @@ function formatTimeAgo(date: Date): string {
 
 export function HistoryPanel() {
   const { history, clearHistory } = useHistory();
-  const { currentStation, setCurrentStation, setIsPlaying } = useRadioStore();
+  const { currentStation, status, play, toggle } = usePlayer();
 
   const handlePlay = (station: Station) => {
-    setCurrentStation(station);
-    setIsPlaying(true);
+    if (currentStation?.id === station.id) {
+      toggle();
+      return;
+    }
+    play(station);
   };
 
   if (history.length === 0) {
@@ -62,6 +65,7 @@ export function HistoryPanel() {
         <div className="p-4 space-y-2">
           {history.map((record, index) => {
             const isActive = currentStation?.id === record.station.id;
+            const isPlaying = isActive && status === 'playing';
             
             return (
               <div
@@ -92,7 +96,7 @@ export function HistoryPanel() {
                 <button
                   onClick={() => handlePlay(record.station)}
                   className="neo-button p-2"
-                  title="Réécouter"
+                  title={isPlaying ? 'Pause' : 'Réécouter'}
                 >
                   <Play className="w-4 h-4" />
                 </button>

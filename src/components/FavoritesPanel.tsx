@@ -1,17 +1,20 @@
 // Component - FavoritesPanel: display favorite stations
 import { Heart, Play, Radio } from 'lucide-react';
 import { useFavorites } from '@/hooks/useFavorites';
-import { useRadioStore } from '@/stores/radio';
+import { usePlayer } from '@/hooks/usePlayer';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { Station } from '@/engine/types';
 
 export function FavoritesPanel() {
   const { favorites, toggleFavorite } = useFavorites();
-  const { currentStation, setCurrentStation, setIsPlaying } = useRadioStore();
+  const { currentStation, status, play, toggle } = usePlayer();
 
   const handlePlay = (station: Station) => {
-    setCurrentStation(station);
-    setIsPlaying(true);
+    if (currentStation?.id === station.id) {
+      toggle();
+      return;
+    }
+    play(station);
   };
 
   if (favorites.length === 0) {
@@ -33,6 +36,7 @@ export function FavoritesPanel() {
       <div className="p-4 space-y-2">
         {favorites.map((station) => {
           const isActive = currentStation?.id === station.id;
+          const isPlaying = isActive && status === 'playing';
           
           return (
             <div
@@ -63,7 +67,7 @@ export function FavoritesPanel() {
                 <button
                   onClick={() => handlePlay(station)}
                   className="neo-button p-2"
-                  title="Écouter"
+                  title={isPlaying ? 'Pause' : 'Écouter'}
                 >
                   <Play className="w-4 h-4" />
                 </button>
