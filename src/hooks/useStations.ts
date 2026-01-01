@@ -1,24 +1,38 @@
-// Hook - useStations: fetch and manage radio stations
 import { useQuery } from '@tanstack/react-query';
 import { getStationsByCountry } from '@/engine/radio/stationService';
 import { useRadioStore } from '@/stores/radio.store';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 export function useStations(countryCode: string | null) {
   const { setStations, setLoading } = useRadioStore();
+  const initializedRef = useRef(false);
 
   const query = useQuery({
     queryKey: ['stations', countryCode],
-    queryFn: () => getStationsByCountry(countryCode!),
-    enabled: !!countryCode,
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 30 * 60 * 1000, // 30 minutes
+    queryFn: () => {
+      if (!countryCode) throw new Error('No country code');
+      return getStationsByCountry(countryCode);
+    },
+    enabled: Boolean(countryCode),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
   });
 
+  // Set loading only for initial load
   useEffect(() => {
-    setLoading(query.isLoading || query.isFetching);
-  }, [query.isLoading, query.isFetching, setLoading]);
+    if (!countryCode) return;
 
+    if (!initializedRef.current && query.isLoading) {
+      setLoading(true);
+    }
+
+    if (query.isSuccess) {
+      initializedRef.current = true;
+      setLoading(false);
+    }
+  }, [countryCode, query.isLoading, query.isSuccess, setLoading]);
+
+  // Sync store only when data actually changes
   useEffect(() => {
     if (query.data) {
       setStations(query.data);

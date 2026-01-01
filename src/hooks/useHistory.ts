@@ -1,62 +1,70 @@
-// Hook - useHistory: manage play history with SQLite persistence
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { useRadioStore, PlayRecord } from '@/stores/radio.store';
 import { getSqliteRepository } from '@/engine/storage/sqlite/stationRepository';
 import type { Station } from '@/engine/types';
 
 export function useHistory() {
-  const { 
-    history, 
-    setHistory, 
+  const {
+    history,
+    setHistory,
     addToHistory: storeAddToHistory,
-    clearHistory: storeClearHistory 
+    clearHistory: storeClearHistory,
   } = useRadioStore();
 
-  // Load history from SQLite on mount
+  const isInitialized = useRef(false);
+  const pendingAdds = useRef<Set<string>>(new Set());
+
+  // Load history once
   useEffect(() => {
+    if (isInitialized.current) return;
+    isInitialized.current = true;
+
     const loadHistory = async () => {
       try {
         const repo = getSqliteRepository();
-        const stations = repo.getPlayHistory(100);
-        
-        // Convert to PlayRecord format (SQLite doesn't store full record)
-        const records: PlayRecord[] = stations.map(s => ({
-          station: s,
-          playedAt: new Date(), // Approximation, could store actual date
-          durationSeconds: 0,
+        const records = repo.getPlayHistory(100);
+
+        const mapped: PlayRecord[] = records.map(r => ({
+          station: r.station,
+          playedAt: r.playedAt ?? new Date(),
+          durationSeconds: r.durationSeconds ?? 0,
         }));
-        
-        setHistory(records);
+
+        setHistory(mapped);
       } catch (error) {
         console.warn('Failed to load history from SQLite:', error);
       }
     };
-    
+
     loadHistory();
   }, [setHistory]);
 
-  // Record play with SQLite persistence
-  const recordPlay = useCallback(async (station: Station, durationSeconds?: number) => {
-    // Optimistic update
-    storeAddToHistory(station, durationSeconds);
-    
-    // Persist to SQLite
-    try {
-      const repo = getSqliteRepository();
-      repo.upsert(station);
-      repo.recordPlay(station.id, durationSeconds);
-    } catch (error) {
-      console.error('Failed to persist play history:', error);
-    }
-  }, [storeAddToHistory]);
+  const recordPlay = useCallback(
+    async (station: Station, durationSeconds?: number) => {
+      const key = station.id;
 
-  // Clear history with SQLite persistence
-  const clearHistory = useCallback(async () => {
+      if (pendingAdds.current.has(key)) return;
+      pendingAdds.current.add(key);
+
+      storeAddToHistory(station, durationSeconds);
+
+      try {
+        const repo = getSqliteRepository();
+        repo.upsert(station);
+        repo.recordPlay(station.id, durationSeconds);
+      } catch (error) {
+        console.error('Failed to persist play history:', error);
+      } finally {
+        pendingAdds.current.delete(key);
+      }
+    },
+    [storeAddToHistory]
+  );
+
+  const clearHistory = useCallback(() => {
     storeClearHistory();
-    
     try {
-      const repo = getSqliteRepository();
-      repo.clearHistory();
+      getSqliteRepository().clearHistory();
     } catch (error) {
       console.error('Failed to clear history in SQLite:', error);
     }

@@ -18,56 +18,58 @@ const DEFAULT_ANALYSIS: AudioAnalysis = {
 
 export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
   const { enabled = true, fps = 60 } = options;
-  
+
   const [analysis, setAnalysis] = useState<AudioAnalysis>(DEFAULT_ANALYSIS);
   const [isSilent, setIsSilent] = useState(false);
+
   const animationRef = useRef<number | null>(null);
   const lastUpdateRef = useRef(0);
-  
-  // Frame interval for throttling
+
   const frameInterval = 1000 / fps;
-  
-  // Animation loop
+
   const updateAnalysis = useCallback((timestamp: number) => {
-    if (!enabled) {
-      animationRef.current = null;
+    if (!enabled) return;
+
+    const elapsed = timestamp - lastUpdateRef.current;
+    if (elapsed < frameInterval) {
+      animationRef.current = requestAnimationFrame(updateAnalysis);
       return;
     }
-    
-    // Throttle updates based on target FPS
-    const elapsed = timestamp - lastUpdateRef.current;
-    if (elapsed >= frameInterval) {
-      lastUpdateRef.current = timestamp - (elapsed % frameInterval);
-      
-      if (audioAnalyzer.isConnected()) {
-        const data = audioAnalyzer.getAnalysis();
-        setAnalysis(data);
-      }
+
+    lastUpdateRef.current = timestamp - (elapsed % frameInterval);
+
+    if (audioAnalyzer.isConnected()) {
+      const data = audioAnalyzer.getAnalysis();
+      setAnalysis(data);
     }
-    
+
     animationRef.current = requestAnimationFrame(updateAnalysis);
   }, [enabled, frameInterval]);
-  
-  // Start/stop animation loop
+
   useEffect(() => {
-    if (enabled) {
-      animationRef.current = requestAnimationFrame(updateAnalysis);
+    if (!enabled) {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
+      }
+      return;
     }
-    
+
+    animationRef.current = requestAnimationFrame(updateAnalysis);
+
     return () => {
-      if (animationRef.current !== null) {
+      if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
         animationRef.current = null;
       }
     };
   }, [enabled, updateAnalysis]);
-  
-  // Subscribe to silence events
+
   useEffect(() => {
     const unsubscribe = audioAnalyzer.onSilence(setIsSilent);
     return unsubscribe;
   }, []);
-  
+
   return {
     ...analysis,
     isSilent,
@@ -83,53 +85,56 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
 export function useAudioVolume(enabled: boolean = true) {
   const volumeRef = useRef(0);
   const peakRef = useRef(false);
+
   const [volume, setVolume] = useState(0);
   const [peak, setPeak] = useState(false);
+
   const animationRef = useRef<number | null>(null);
   const lastUpdateRef = useRef(0);
-  
-  // Throttle to 30 FPS for performance
+
   const FRAME_INTERVAL = 1000 / 30;
-  
+
   useEffect(() => {
     if (!enabled) {
-      volumeRef.current = 0;
-      peakRef.current = false;
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
+      }
       setVolume(0);
       setPeak(false);
       return;
     }
-    
+
     const update = (timestamp: number) => {
       const elapsed = timestamp - lastUpdateRef.current;
-      
-      if (elapsed >= FRAME_INTERVAL) {
+      if (elapsed >= FRAME_INTERVAL && audioAnalyzer.isConnected()) {
         lastUpdateRef.current = timestamp - (elapsed % FRAME_INTERVAL);
-        
-        if (audioAnalyzer.isConnected()) {
-          const data = audioAnalyzer.getAnalysis();
-          volumeRef.current = data.volume;
-          peakRef.current = data.peak;
-          
-          // Only update state if values changed significantly
-          if (Math.abs(data.volume - volume) > 0.02 || data.peak !== peak) {
-            setVolume(data.volume);
-            setPeak(data.peak);
-          }
+
+        const data = audioAnalyzer.getAnalysis();
+        volumeRef.current = data.volume;
+        peakRef.current = data.peak;
+
+        if (
+          Math.abs(data.volume - volume) > 0.02 ||
+          data.peak !== peak
+        ) {
+          setVolume(data.volume);
+          setPeak(data.peak);
         }
       }
-      
+
       animationRef.current = requestAnimationFrame(update);
     };
-    
+
     animationRef.current = requestAnimationFrame(update);
-    
+
     return () => {
-      if (animationRef.current !== null) {
+      if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
       }
     };
-  }, [enabled]);
-  
+  }, [enabled, volume, peak]);
+
   return { volume, peak, volumeRef, peakRef };
 }

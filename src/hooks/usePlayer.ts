@@ -1,19 +1,31 @@
-// Hook - usePlayer: manage audio playback state
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { audioEngine, AudioEngineState } from '@/engine/player/audioEngine';
 import { onStationPlay } from '@/engine/radio/stationService';
 import { Station } from '@/engine/types/radio';
 
 export function usePlayer() {
   const [state, setState] = useState<AudioEngineState>(audioEngine.getState());
+  const subscribedRef = useRef(false);
 
   useEffect(() => {
-    return audioEngine.subscribe(setState);
+    if (subscribedRef.current) return;
+
+    const unsubscribe = audioEngine.subscribe(setState);
+    subscribedRef.current = true;
+
+    return () => {
+      unsubscribe();
+      subscribedRef.current = false;
+    };
   }, []);
 
   const play = useCallback(async (station: Station) => {
-    await audioEngine.play(station);
-    onStationPlay(station.id);
+    try {
+      await audioEngine.play(station);
+      onStationPlay(station.id);
+    } catch (err) {
+      console.error('Play failed:', err);
+    }
   }, []);
 
   const pause = useCallback(() => {
@@ -41,18 +53,20 @@ export function usePlayer() {
   }, []);
 
   return {
-    // Core state
+    // State
     status: state.status,
     currentStation: state.currentStation,
     volume: state.volume,
     muted: state.muted,
     error: state.error,
+
     // Diagnostics
     currentUrl: state.currentUrl,
     urlType: state.urlType,
     candidateIndex: state.candidateIndex,
     totalCandidates: state.totalCandidates,
-    // Actions
+
+    // Controls
     play,
     pause,
     resume,

@@ -1,4 +1,3 @@
-// Hook - useStationSearch: combined search and filter logic
 import { useMemo } from 'react';
 import { useRadioStore } from '@/stores/radio.store';
 import type { Station } from '@/engine/types';
@@ -7,29 +6,36 @@ interface UseStationSearchResult {
   results: Station[];
   totalCount: number;
   filteredCount: number;
+  hasFilters: boolean;
+  hasSearch: boolean;
   isFiltered: boolean;
-  hasQuery: boolean;
 }
 
 export function useStationSearch(): UseStationSearchResult {
-  const { 
-    stations, 
+  const {
+    stations,
     filteredStations,
-    searchQuery, 
-    selectedGenre, 
+    searchQuery,
+    selectedGenre,
     selectedBitrate,
-    onlineOnly 
+    onlineOnly,
   } = useRadioStore();
 
-  const isFiltered = useMemo(() => {
-    return !!(searchQuery || selectedGenre || selectedBitrate || onlineOnly);
-  }, [searchQuery, selectedGenre, selectedBitrate, onlineOnly]);
+  const hasSearch = Boolean(searchQuery);
+  const hasFilters = Boolean(selectedGenre || selectedBitrate || onlineOnly);
+
+  const isFiltered = hasSearch || hasFilters;
+
+  const results = useMemo(() => {
+    return isFiltered ? filteredStations : stations;
+  }, [isFiltered, filteredStations, stations]);
 
   return {
-    results: filteredStations,
+    results,
     totalCount: stations.length,
-    filteredCount: filteredStations.length,
+    filteredCount: results.length,
+    hasSearch,
+    hasFilters,
     isFiltered,
-    hasQuery: !!searchQuery,
   };
 }

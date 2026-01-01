@@ -1,19 +1,24 @@
-// Hook - useFavorites: manage favorites with SQLite persistence
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { useRadioStore } from '@/stores/radio.store';
 import { getSqliteRepository } from '@/engine/storage/sqlite/stationRepository';
 import type { Station } from '@/engine/types';
 
 export function useFavorites() {
-  const { 
-    favorites, 
-    setFavorites, 
+  const {
+    favorites,
+    setFavorites,
     toggleFavorite: storeToggle,
-    isFavorite 
+    isFavorite
   } = useRadioStore();
 
-  // Load favorites from SQLite on mount
+  const isInitialized = useRef(false);
+  const pendingToggle = useRef<Set<string>>(new Set());
+
+  // Load favorites from SQLite once
   useEffect(() => {
+    if (isInitialized.current) return;
+    isInitialized.current = true;
+
     const loadFavorites = async () => {
       try {
         const repo = getSqliteRepository();
@@ -23,34 +28,42 @@ export function useFavorites() {
         console.warn('Failed to load favorites from SQLite:', error);
       }
     };
-    
+
     loadFavorites();
   }, [setFavorites]);
 
-  // Toggle favorite with SQLite persistence
-  const toggleFavorite = useCallback(async (station: Station) => {
-    const wasAlreadyFavorite = isFavorite(station.id);
-    
-    // Optimistic update
-    storeToggle(station);
-    
-    // Persist to SQLite
-    try {
-      const repo = getSqliteRepository();
-      
-      if (wasAlreadyFavorite) {
-        repo.removeFavorite(station.id);
-      } else {
-        // Ensure station exists before adding favorite
-        repo.upsert(station);
-        repo.addFavorite(station.id);
-      }
-    } catch (error) {
-      console.error('Failed to persist favorite:', error);
-      // Rollback on error
+  const toggleFavorite = useCallback(
+    async (station: Station) => {
+      const id = station.id;
+
+      // Prevent concurrent toggles on same station
+      if (pendingToggle.current.has(id)) return;
+      pendingToggle.current.add(id);
+
+      const wasFavorite = isFavorite(id);
+
+      // Optimistic UI update
       storeToggle(station);
-    }
-  }, [storeToggle, isFavorite]);
+
+      try {
+        const repo = getSqliteRepository();
+
+        if (wasFavorite) {
+          repo.removeFavorite(id);
+        } else {
+          repo.upsert(station);
+          repo.addFavorite(id);
+        }
+      } catch (error) {
+        console.error('Failed to persist favorite:', error);
+        // rollback
+        storeToggle(station);
+      } finally {
+        pendingToggle.current.delete(id);
+      }
+    },
+    [storeToggle, isFavorite]
+  );
 
   return {
     favorites,

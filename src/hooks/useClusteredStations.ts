@@ -1,4 +1,3 @@
-// Hook - useClusteredStations: manage clustering for large station sets
 import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import { StationCluster, type ClusterOptions } from '@/engine/geo/clustering/stationCluster';
 import type { Station, Cluster } from '@/engine/types';
@@ -21,70 +20,69 @@ export function useClusteredStations(
   options: UseClusteredStationsOptions = {}
 ): UseClusteredStationsResult {
   const { enabled = true, ...clusterOptions } = options;
-  
+
   const clusterRef = useRef<StationCluster | null>(null);
-  const [isLoaded, setIsLoaded] = useState(false);
-  const [clusters, setClusters] = useState<Cluster[]>([]);
   const stationsMapRef = useRef<Map<string, Station>>(new Map());
 
-  // Initialize cluster instance
-  useEffect(() => {
-    if (enabled && !clusterRef.current) {
-      clusterRef.current = new StationCluster(clusterOptions);
-    }
-    
-    return () => {
-      if (clusterRef.current) {
-        clusterRef.current.clear();
-      }
-    };
-  }, [enabled]);
+  const [clusters, setClusters] = useState<Cluster[]>([]);
+  const [isLoaded, setIsLoaded] = useState(false);
 
-  // Load stations into cluster
+  // Recreate cluster when options change
+  useEffect(() => {
+    if (!enabled) {
+      clusterRef.current = null;
+      setClusters([]);
+      setIsLoaded(false);
+      return;
+    }
+
+    clusterRef.current = new StationCluster(clusterOptions);
+    setClusters([]);
+    setIsLoaded(false);
+
+    return () => {
+      clusterRef.current?.clear();
+      clusterRef.current = null;
+    };
+  }, [enabled, JSON.stringify(clusterOptions)]);
+
   const loadStations = useCallback((stations: Station[]) => {
-    if (!clusterRef.current || !enabled) return;
-    
-    // Store stations for later lookup
+    if (!clusterRef.current) return;
+
     stationsMapRef.current.clear();
     stations.forEach(s => stationsMapRef.current.set(s.id, s));
-    
+
     clusterRef.current.loadStations(stations);
     setIsLoaded(true);
-  }, [enabled]);
+  }, []);
 
-  // Get clusters for current viewport
-  const getClustersForView = useCallback((
-    bbox: [number, number, number, number], 
-    zoom: number
-  ): Cluster[] => {
-    if (!clusterRef.current || !isLoaded) return [];
-    
-    const result = clusterRef.current.getClusters(bbox, zoom);
-    setClusters(result);
-    return result;
-  }, [isLoaded]);
+  const getClustersForView = useCallback(
+    (bbox: [number, number, number, number], zoom: number): Cluster[] => {
+      if (!clusterRef.current || !isLoaded) return [];
 
-  // Get individual stations from a cluster
+      const result = clusterRef.current.getClusters(bbox, zoom);
+      setClusters(result);
+      return result;
+    },
+    [isLoaded]
+  );
+
   const getClusterLeaves = useCallback((clusterId: number): Station[] => {
     if (!clusterRef.current) return [];
-    
-    const points = clusterRef.current.getClusterLeaves(clusterId);
-    return points
+
+    return clusterRef.current
+      .getClusterLeaves(clusterId)
       .map(p => stationsMapRef.current.get(p.id))
-      .filter((s): s is Station => s !== undefined);
+      .filter((s): s is Station => Boolean(s));
   }, []);
 
-  // Get zoom level for cluster expansion
   const getExpansionZoom = useCallback((clusterId: number): number => {
-    if (!clusterRef.current) return 16;
-    return clusterRef.current.getClusterExpansionZoom(clusterId);
+    return clusterRef.current?.getClusterExpansionZoom(clusterId) ?? 16;
   }, []);
 
-  // Clear all data
   const clear = useCallback(() => {
-    if (clusterRef.current) {
-      clusterRef.current.clear();
-    }
+    clusterRef.current?.clear();
+    clusterRef.current = null;
     stationsMapRef.current.clear();
     setClusters([]);
     setIsLoaded(false);
