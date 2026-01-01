@@ -2,6 +2,17 @@
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
+// Force proxy flag - can be set externally
+let forceProxyEnabled = false;
+
+export function setForceProxy(enabled: boolean): void {
+  forceProxyEnabled = enabled;
+}
+
+export function isForceProxyEnabled(): boolean {
+  return forceProxyEnabled;
+}
+
 /**
  * Comprehensive list of domains known to support HTTPS
  * Organized by region/type for maintainability
@@ -146,6 +157,7 @@ export function upgradeToHttps(url: string): string {
  * - Returns original if already HTTPS
  * - Upgrades to HTTPS if domain supports it
  * - Returns proxy URL for HTTP-only streams
+ * - If forceProxy is enabled, always uses proxy for HTTP
  */
 export function getSecureStreamUrl(url: string): string {
   if (!url) return url;
@@ -153,6 +165,11 @@ export function getSecureStreamUrl(url: string): string {
   // Already secure
   if (url.startsWith('https://')) {
     return url;
+  }
+  
+  // If force proxy is enabled, use proxy for all HTTP streams
+  if (forceProxyEnabled) {
+    return buildProxyUrl(url);
   }
   
   // Try HTTPS upgrade for known domains
