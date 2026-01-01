@@ -1,12 +1,13 @@
 // Component - StationsPanel: side panel with tabs for stations, favorites, history
 import { useState, useEffect } from 'react';
-import { X, Radio, RefreshCw, Heart, History, Sparkles, Globe, PanelRightClose } from 'lucide-react';
+import { X, Radio, RefreshCw, Heart, History, Sparkles, Globe, PanelRightClose, Settings } from 'lucide-react';
 import { useGeoStore } from '@/stores/geo.store';
 import { useRadioStore } from '@/stores/radio.store';
 import { useStations } from '@/hooks/useStations';
 import { StationList } from './StationList';
 import { FavoritesPanel } from './FavoritesPanel';
 import { HistoryPanel } from './HistoryPanel';
+import { SettingsPanel } from './SettingsPanel';
 import { SearchBar } from './SearchBar';
 import { FilterPanel } from './FilterPanel';
 import { AmbienceChips } from './AmbienceChips';
@@ -16,12 +17,13 @@ import { enrichStationSync } from '@/engine/radio/enrichment/stationEnricher';
 import { healthMonitor } from '@/engine/radio/health';
 import { getTopStations } from '@/engine/radio/stationService';
 
-type TabId = 'stations' | 'favorites' | 'history';
+type TabId = 'stations' | 'favorites' | 'history' | 'settings';
 
 const TABS: { id: TabId; label: string; icon: typeof Radio }[] = [
   { id: 'stations', label: 'Stations', icon: Radio },
   { id: 'favorites', label: 'Favoris', icon: Heart },
   { id: 'history', label: 'Historique', icon: History },
+  { id: 'settings', label: 'Paramètres', icon: Settings },
 ];
 
 interface StationsPanelProps {
@@ -288,6 +290,7 @@ export function StationsPanel({ onClose }: StationsPanelProps) {
         )}
         {activeTab === 'favorites' && <FavoritesPanel />}
         {activeTab === 'history' && <HistoryPanel />}
+        {activeTab === 'settings' && <SettingsPanel />}
       </div>
     </div>
   );

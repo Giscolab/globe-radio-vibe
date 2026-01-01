@@ -8,7 +8,7 @@ import { QualityBadge } from './QualityBadge';
 import { StationHealthBadge } from './StationHealthBadge';
 import { enrichStationSync } from '@/engine/radio/enrichment/stationEnricher';
 import { getHealthTier } from '@/engine/radio/health';
-import { needsProxy } from '@/engine/radio/utils/httpsUpgrade';
+import { needsProxy, isForceProxyEnabled } from '@/engine/radio/utils/httpsUpgrade';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 export function PlayerBar() {
@@ -40,8 +40,10 @@ export function PlayerBar() {
   const health = currentStation ? stationHealth[currentStation.id] : null;
   const isUnstable = health && !health.ok;
   
-  // Check if station uses proxy
-  const isProxied = currentStation?.url ? needsProxy(currentStation.url) : false;
+  // Check if station uses proxy (force proxy or needs proxy)
+  const isProxied = currentStation?.url 
+    ? (isForceProxyEnabled() && !currentStation.url.startsWith('https://')) || needsProxy(currentStation.url) 
+    : false;
 
   return (
     <div className="neo-raised-lg p-4">
