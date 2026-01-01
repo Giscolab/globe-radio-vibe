@@ -7,7 +7,9 @@ interface SettingsState {
   forceProxy: boolean;
   setForceProxy: (force: boolean) => void;
   
-  // Future settings can be added here
+  // Safe audio mode - disables WebAudio analyzer for maximum compatibility
+  safeAudioMode: boolean;
+  setSafeAudioMode: (safe: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -15,6 +17,8 @@ export const useSettingsStore = create<SettingsState>()(
     (set) => ({
       forceProxy: false,
       setForceProxy: (force) => set({ forceProxy: force }),
+      safeAudioMode: true, // Default ON for maximum compatibility
+      setSafeAudioMode: (safe) => set({ safeAudioMode: safe }),
     }),
     {
       name: 'radio-settings',

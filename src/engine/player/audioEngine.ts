@@ -8,6 +8,18 @@ import { audioAnalyzer } from '../audio/audioAnalyzer';
 import { healthHistory } from '../radio/health';
 import { buildCandidateUrls, isHlsStream, browserSupportsHls } from '../radio/utils/httpsUpgrade';
 
+// Safe audio mode flag - when true, never connect WebAudio analyzer
+let safeAudioModeEnabled = true;
+
+export function setSafeAudioMode(enabled: boolean): void {
+  safeAudioModeEnabled = enabled;
+  logger.info('AudioEngine', `Safe audio mode: ${enabled ? 'ON' : 'OFF'}`);
+}
+
+export function isSafeAudioModeEnabled(): boolean {
+  return safeAudioModeEnabled;
+}
+
 export type PlayerStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'error';
 
 export interface AudioEngineState {
@@ -78,8 +90,15 @@ class AudioEngine {
 
   /**
    * Connect WebAudio analyzer to current Howl audio element
+   * Only connects if safe audio mode is disabled
    */
   private connectAnalyzer(): void {
+    // Skip analyzer connection in safe audio mode
+    if (safeAudioModeEnabled) {
+      logger.debug('AudioEngine', 'Skipping analyzer connection (safe audio mode)');
+      return;
+    }
+    
     if (!this.howl || this.analyzerConnected) return;
     
     try {
