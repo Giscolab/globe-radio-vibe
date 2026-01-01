@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useRef } from 'react';
-import { useRadioStore, PlayRecord } from '@/stores/radio.store';
+import { useRadioStore, type PlayRecord } from '@/stores/radio';
 import { getSqliteRepository } from '@/engine/storage/sqlite/stationRepository';
 import type { Station } from '@/engine/types';
 
@@ -22,12 +22,14 @@ export function useHistory() {
     const loadHistory = async () => {
       try {
         const repo = getSqliteRepository();
-        const records = repo.getPlayHistory(100);
+        // Note: getPlayHistory returns Station[], not PlayRecord[]
+        // We create PlayRecord with current date as we don't have the original playedAt
+        const stations = repo.getPlayHistory(100);
 
-        const mapped: PlayRecord[] = records.map(r => ({
-          station: r.station,
-          playedAt: r.playedAt ?? new Date(),
-          durationSeconds: r.durationSeconds ?? 0,
+        const mapped: PlayRecord[] = stations.map((station) => ({
+          station,
+          playedAt: new Date(), // SQLite doesn't return playedAt per station
+          durationSeconds: 0,
         }));
 
         setHistory(mapped);

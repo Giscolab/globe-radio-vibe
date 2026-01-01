@@ -1,7 +1,7 @@
 // Component - FilterPanel: collapsible filters for stations
 import { useState } from 'react';
 import { Filter, ChevronDown, ChevronUp, X, Sparkles } from 'lucide-react';
-import { useRadioStore } from '@/stores/radio.store';
+import { useRadioStore } from '@/stores/radio';
 import type { QualityTier } from '@/engine/types/radio';
 
 const GENRES = [

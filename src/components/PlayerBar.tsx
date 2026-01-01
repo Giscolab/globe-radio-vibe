@@ -1,6 +1,6 @@
 import { Play, Pause, Volume2, VolumeX, Radio, AlertCircle, WifiOff, Shield } from 'lucide-react';
 import { usePlayer } from '@/hooks/usePlayer';
-import { useRadioStore } from '@/stores/radio.store';
+import { useRadioStore } from '@/stores/radio';
 import { useSettingsStore } from '@/stores/settings.store';
 import { useAudioAnalysis } from '@/hooks/useAudioAnalysis';
 import { AudioVisualizer } from './AudioVisualizer';

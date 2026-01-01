@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { getStationsByCountry } from '@/engine/radio/stationService';
-import { useRadioStore } from '@/stores/radio.store';
+import { useRadioStore } from '@/stores/radio';
 import { useEffect, useRef } from 'react';
 
 export function useStations(countryCode: string | null) {

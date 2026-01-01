@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useRadioStore } from '@/stores/radio.store';
+import { useRadioStore, selectFilteredStations } from '@/stores/radio';
 import type { Station } from '@/engine/types';
 
 interface UseStationSearchResult {
@@ -14,7 +14,6 @@ interface UseStationSearchResult {
 export function useStationSearch(): UseStationSearchResult {
   const {
     stations,
-    filteredStations,
     searchQuery,
     selectedGenre,
     selectedBitrate,
@@ -23,12 +22,21 @@ export function useStationSearch(): UseStationSearchResult {
 
   const hasSearch = Boolean(searchQuery);
   const hasFilters = Boolean(selectedGenre || selectedBitrate || onlineOnly);
-
   const isFiltered = hasSearch || hasFilters;
 
-  const results = useMemo(() => {
-    return isFiltered ? filteredStations : stations;
-  }, [isFiltered, filteredStations, stations]);
+  const filteredStations = useMemo(
+    () =>
+      selectFilteredStations(
+        stations,
+        searchQuery,
+        selectedGenre,
+        selectedBitrate,
+        onlineOnly
+      ),
+    [stations, searchQuery, selectedGenre, selectedBitrate, onlineOnly]
+  );
+
+  const results = isFiltered ? filteredStations : stations;
 
   return {
     results,

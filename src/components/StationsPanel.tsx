@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { X, Radio, RefreshCw, Heart, History, Sparkles, Globe, PanelRightClose, Settings } from 'lucide-react';
 import { useGeoStore } from '@/stores/geo.store';
-import { useRadioStore } from '@/stores/radio.store';
+import { useRadioStore } from '@/stores/radio';
 import { useStations } from '@/hooks/useStations';
 import { StationList } from './StationList';
 import { FavoritesPanel } from './FavoritesPanel';
