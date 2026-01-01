@@ -60,9 +60,21 @@ export const useAudioStore = create<AudioState>()(
     setBeatCount: (count) => set({ beatCount: count }),
     setIsConnected: (connected) => set({ isConnected: connected }),
     
-    updateAudioData: (data) => set(data),
+    // Optimized batch update - only triggers rerender if values changed
+    updateAudioData: (data) =>
+      set((state) => {
+        let changed = false;
+        for (const key in data) {
+          if (state[key as keyof typeof data] !== data[key as keyof typeof data]) {
+            changed = true;
+            break;
+          }
+        }
+        return changed ? { ...state, ...data } : state;
+      }),
     
-    reset: () => set(initialState),
+    // Clone initialState to avoid shared reference
+    reset: () => set(() => ({ ...initialState })),
   }))
 );
 
@@ -73,3 +85,12 @@ export const selectBassLevel = (state: AudioState) => state.bassLevel;
 export const selectIsSilent = (state: AudioState) => state.isSilent;
 export const selectBpm = (state: AudioState) => state.bpm;
 export const selectIsConnected = (state: AudioState) => state.isConnected;
+
+// Audio snapshot for visualizations
+export const selectAudioSnapshot = (state: AudioState) => ({
+  volume: state.volume,
+  peak: state.peak,
+  bassLevel: state.bassLevel,
+  trebleLevel: state.trebleLevel,
+  bpm: state.bpm,
+});
