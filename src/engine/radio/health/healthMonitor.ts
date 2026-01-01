@@ -1,6 +1,8 @@
 // Engine - Health Monitor: periodic health checks with event system
-import { checkStationHealth, StationHealth, getHealthTier } from './healthChecker';
-import { logger } from '../../core/logger';
+import { checkStationsHealthBatch, StationHealth, getHealthTier } from './healthChecker';
+import { createLogger } from '../../../engine/core/logger';
+
+const log = createLogger('HealthMonitor');
 
 type HealthUpdateCallback = (stationId: string, health: StationHealth) => void;
 
@@ -14,24 +16,43 @@ class HealthMonitor {
   private healthCache: Map<string, StationHealth> = new Map();
   private monitoredStations: Map<string, MonitoredStation> = new Map();
   private listeners: Set<HealthUpdateCallback> = new Set();
-  private intervalId: NodeJS.Timeout | null = null;
+  private intervalId: ReturnType<typeof setInterval> | null = null;
   private isRunning = false;
+  private isPaused = false;
+
+  constructor() {
+    // Pause when tab is hidden to save resources
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', () => {
+        this.isPaused = document.hidden;
+        if (!document.hidden && this.isRunning) {
+          log.debug('Tab visible, resuming health checks');
+        }
+      });
+    }
+  }
 
   /**
    * Start periodic health monitoring
    */
-  start(intervalMs = 60000): void {
+  start(intervalMs = 120000): void { // 2 minutes instead of 1
     if (this.isRunning) return;
     
     this.isRunning = true;
-    logger.info('HealthMonitor', `Starting with ${intervalMs}ms interval`);
+    log.info(`Starting with ${intervalMs / 1000}s interval`);
     
-    // Initial check
-    this.checkAll();
+    // Delay initial check to not block startup
+    setTimeout(() => {
+      if (this.isRunning && !this.isPaused) {
+        this.checkAll();
+      }
+    }, 3000);
     
     // Periodic checks
     this.intervalId = setInterval(() => {
-      this.checkAll();
+      if (!this.isPaused) {
+        this.checkAll();
+      }
     }, intervalMs);
   }
 
@@ -44,7 +65,7 @@ class HealthMonitor {
       this.intervalId = null;
     }
     this.isRunning = false;
-    logger.info('HealthMonitor', 'Stopped');
+    log.info('Stopped');
   }
 
   /**
@@ -84,50 +105,60 @@ class HealthMonitor {
     const station = this.monitoredStations.get(stationId);
     if (!station) return null;
 
-    const health = await checkStationHealth(station.url);
-    this.updateHealth(stationId, health);
+    const results = await checkStationsHealthBatch([{ id: station.id, url: station.url }]);
+    const health = results.get(stationId);
     
-    return health;
+    if (health) {
+      this.updateHealth(stationId, health);
+    }
+    
+    return health || null;
   }
 
   /**
    * Check a URL directly (for stations not yet registered)
    */
   async checkUrl(url: string, stationId?: string): Promise<StationHealth> {
-    const health = await checkStationHealth(url);
+    const id = stationId || 'temp';
+    const results = await checkStationsHealthBatch([{ id, url }]);
+    const health = results.get(id);
     
-    if (stationId) {
+    if (health && stationId) {
       this.updateHealth(stationId, health);
     }
     
-    return health;
+    return health || {
+      ok: true,
+      latency: null,
+      lastChecked: Date.now(),
+      error: 'Check unavailable',
+    };
   }
 
   /**
-   * Check all monitored stations (prioritized: current, favorites, then others)
-   * Limits total checks to avoid overwhelming the network
+   * Check all monitored stations using batch API
    */
   private async checkAll(): Promise<void> {
     const stations = Array.from(this.monitoredStations.values());
     
-    // Limit to prevent excessive checks
-    const MAX_CHECKS_PER_CYCLE = 20;
+    if (stations.length === 0) return;
+
+    // Limit to prevent overwhelming the backend
+    const MAX_CHECKS_PER_CYCLE = 10;
     const stationsToCheck = stations.slice(0, MAX_CHECKS_PER_CYCLE);
     
-    // Check in parallel with concurrency limit
-    const CONCURRENCY = 5;
-    for (let i = 0; i < stationsToCheck.length; i += CONCURRENCY) {
-      const batch = stationsToCheck.slice(i, i + CONCURRENCY);
-      await Promise.all(
-        batch.map(async (station) => {
-          try {
-            const health = await checkStationHealth(station.url);
-            this.updateHealth(station.id, health);
-          } catch (error) {
-            logger.warn('HealthMonitor', `Check failed for ${station.id}: ${error}`);
-          }
-        })
+    log.debug(`Checking ${stationsToCheck.length} stations`);
+
+    try {
+      const results = await checkStationsHealthBatch(
+        stationsToCheck.map(s => ({ id: s.id, url: s.url }))
       );
+
+      for (const [stationId, health] of results) {
+        this.updateHealth(stationId, health);
+      }
+    } catch (error) {
+      log.debug(`Batch check failed: ${error}`);
     }
   }
 
@@ -138,10 +169,10 @@ class HealthMonitor {
     const previousHealth = this.healthCache.get(stationId);
     this.healthCache.set(stationId, health);
 
-    // Log status changes
+    // Only log significant status changes
     if (previousHealth?.ok !== health.ok) {
       const tier = getHealthTier(health);
-      logger.info('HealthMonitor', `${stationId}: ${tier} (${health.latency}ms)`);
+      log.info(`${stationId}: ${tier}${health.latency ? ` (${health.latency}ms)` : ''}`);
     }
 
     // Notify listeners
@@ -149,7 +180,7 @@ class HealthMonitor {
       try {
         listener(stationId, health);
       } catch (error) {
-        logger.warn('HealthMonitor', `Listener error: ${error}`);
+        log.debug(`Listener error: ${error}`);
       }
     }
   }

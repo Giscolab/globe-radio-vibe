@@ -1,1 +1,4 @@
 project_id = "qrufkomvbsjwqmpstecu"
+
+[functions.check-station-health]
+verify_jwt = false
