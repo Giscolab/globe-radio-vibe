@@ -2,22 +2,23 @@
 import { useState, useEffect } from 'react';
 import { Sparkles, RefreshCw, Radio } from 'lucide-react';
 import { useRadioStore } from '@/stores/radio';
-import { aiEngine } from '@/engine/radio/ai';
+import { aiEngine, type AIExplanation } from '@/engine/radio/ai';
 import { usePlayer } from '@/hooks/usePlayer';
 
 export function RecommendationsPanel() {
-  const { stations, favorites, history, recommendations, setRecommendations, currentStation, isPlaying } = useRadioStore();
+  const { stations, recommendations, setRecommendations, currentStation, isPlaying } = useRadioStore();
   const { play, pause } = usePlayer();
   const [isLoading, setIsLoading] = useState(false);
+  const [explanations, setExplanations] = useState<Record<string, AIExplanation>>({});
 
   const loadRecommendations = async () => {
     if (stations.length === 0) return;
     
     setIsLoading(true);
     try {
-      const historyStations = history.slice(0, 10).map(h => h.station);
-      const recs = await aiEngine.recommend(historyStations, favorites, stations, 6);
-      setRecommendations(recs);
+      const result = aiEngine.recommend('', { stations, limit: 6 });
+      setRecommendations(result.stations);
+      setExplanations(result.explanations);
     } catch (error) {
       console.error('Failed to load recommendations:', error);
     } finally {
@@ -105,6 +106,11 @@ export function RecommendationsPanel() {
                   <div className="text-[10px] text-muted-foreground truncate">
                     {station.country}
                   </div>
+                  {explanations[station.id]?.summary && (
+                    <div className="text-[10px] text-muted-foreground truncate">
+                      {explanations[station.id].summary}
+                    </div>
+                  )}
                 </div>
                 {isCurrentlyPlaying && (
                   <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />

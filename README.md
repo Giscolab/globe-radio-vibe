@@ -21,8 +21,14 @@ Application de radio mondiale interactive avec globe 3D, permettant d'explorer e
 # Installation des dépendances
 npm install
 
+# Configuration locale
+cp .env.example .env
+
 # Lancement du serveur de développement
 npm run dev
+
+# Vérification TypeScript
+npm run typecheck
 
 # Build de production
 npm run build
@@ -190,6 +196,16 @@ CREATE TABLE play_history (
   duration_seconds INTEGER DEFAULT 0
 );
 
+-- Signaux IA
+CREATE TABLE ai_signals (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  station_id TEXT NOT NULL,
+  type TEXT NOT NULL,
+  duration_seconds INTEGER DEFAULT 0,
+  details TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Paramètres
 CREATE TABLE settings (
   key TEXT PRIMARY KEY,
@@ -236,10 +252,29 @@ src/engine/
     └── db.test.ts
 ```
 
+## ⚙️ Variables d'environnement
+
+Les variables nécessaires sont listées dans `.env.example` :
+
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_PUBLISHABLE_KEY`
+- `VITE_SUPABASE_PROJECT_ID`
+- `VITE_LOG_LEVEL` (optionnel : `none`, `error`, `warn`, `info`, `debug`)
+
+## 🩺 Troubleshooting audio
+
+1. **CORS / Mixed content** : utilisez le proxy audio (`/functions/v1/audio-stream-proxy`).
+2. **HLS** : certains flux `.m3u8` ne sont pas supportés selon le navigateur.
+3. **Flux instables** : le health monitor détecte les stations offline/unstable.
+4. **SSRF** : le proxy Edge bloque les hôtes privés (localhost, 127.0.0.1, 10/172/192).
+
 ## 📄 Documentation
 
 - [Architecture détaillée](docs/ARCHITECTURE.md)
 - [Modèle de données](docs/DATA_MODEL.md)
+- [Audio](docs/architecture/audio.md)
+- [IA](docs/architecture/ai.md)
+- [Storage](docs/architecture/storage.md)
 
 ## 🚢 Déploiement
 

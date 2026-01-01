@@ -39,6 +39,26 @@ export interface PlayHistoryRecord {
   durationSeconds: number;
 }
 
+interface AISignalRow {
+  id: number;
+  station_id: string;
+  type: string;
+  duration_seconds: number | null;
+  details: string | null;
+  created_at: string;
+}
+
+export type AISignalType = 'play' | 'skip' | 'favorite_add' | 'favorite_remove' | 'error';
+
+export interface AISignalRecord {
+  id: number;
+  stationId: string;
+  type: AISignalType;
+  durationSeconds: number;
+  details: string | null;
+  createdAt: string;
+}
+
 function rowToStation(row: StationRow): Station {
   return {
     id: row.id,
@@ -232,6 +252,51 @@ export class SqliteStationRepository implements IStationRepository {
 
   clearHistory(): void {
     this.getDb().exec('DELETE FROM play_history');
+  }
+
+  // AI signal methods
+  recordSignal(type: AISignalType, stationId: string, options?: { durationSeconds?: number; details?: string }): void {
+    this.getDb().exec(
+      `INSERT INTO ai_signals (station_id, type, duration_seconds, details)
+       VALUES (?, ?, ?, ?)`,
+      [
+        stationId,
+        type,
+        options?.durationSeconds ?? 0,
+        options?.details ?? null,
+      ]
+    );
+  }
+
+  getSignals(limit: number = 200, types?: AISignalType[]): AISignalRecord[] {
+    const params: unknown[] = [];
+    let whereClause = '';
+
+    if (types && types.length > 0) {
+      const placeholders = types.map(() => '?').join(', ');
+      whereClause = `WHERE type IN (${placeholders})`;
+      params.push(...types);
+    }
+
+    params.push(limit);
+
+    const rows = this.getDb().selectObjects<AISignalRow>(
+      `SELECT id, station_id, type, duration_seconds, details, created_at
+       FROM ai_signals
+       ${whereClause}
+       ORDER BY created_at DESC
+       LIMIT ?`,
+      params
+    );
+
+    return rows.map((row) => ({
+      id: row.id,
+      stationId: row.station_id,
+      type: row.type as AISignalType,
+      durationSeconds: row.duration_seconds ?? 0,
+      details: row.details ?? null,
+      createdAt: row.created_at,
+    }));
   }
 
   // Settings methods

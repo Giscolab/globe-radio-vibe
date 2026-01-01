@@ -1,4 +1,4 @@
-import { Play, Pause, Volume2, VolumeX, Radio, AlertCircle, WifiOff, Shield } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, Radio, AlertCircle, WifiOff, Shield, RotateCw } from 'lucide-react';
 import { usePlayer } from '@/hooks/usePlayer';
 import { useRadioStore } from '@/stores/radio';
 import { useSettingsStore } from '@/stores/settings.store';
@@ -11,6 +11,7 @@ import { enrichStationSync } from '@/engine/radio/enrichment/stationEnricher';
 import { getHealthTier } from '@/engine/radio/health';
 import { needsProxy, isForceProxyEnabled } from '@/engine/radio/utils/httpsUpgrade';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { shallow } from 'zustand/shallow';
 
 export function PlayerBar() {
   const { 
@@ -20,14 +21,24 @@ export function PlayerBar() {
     muted,
     toggle, 
     setVolume,
-    toggleMute 
+    toggleMute,
+    play,
+    error,
+    candidateIndex,
+    totalCandidates
   } = usePlayer();
   
-  const { stationHealth } = useRadioStore();
+  const { stationHealth } = useRadioStore(
+    (state) => ({ stationHealth: state.stationHealth }),
+    shallow
+  );
   const { safeAudioMode } = useSettingsStore();
   
   const isPlaying = status === 'playing';
   const isLoading = status === 'loading';
+  const isPaused = status === 'paused';
+  const isError = status === 'error';
+  const isStabilizing = isLoading && candidateIndex > 0;
   
   // Only use audio analysis when NOT in safe mode and playing
   const { fft, volume: audioVolume, peak, silent, isCorsBlocked } = useAudioAnalysis({ 
@@ -49,6 +60,15 @@ export function PlayerBar() {
   const isProxied = currentStation?.url 
     ? (isForceProxyEnabled() && !currentStation.url.startsWith('https://')) || needsProxy(currentStation.url) 
     : false;
+
+  const statusLabel = (() => {
+    if (!currentStation) return 'Prêt';
+    if (isLoading) return isStabilizing ? 'Stabilisation' : 'Chargement';
+    if (isPlaying) return 'Lecture';
+    if (isPaused) return 'Pause';
+    if (isError) return 'Erreur';
+    return 'Arrêt';
+  })();
 
   return (
     <div className="neo-raised-lg p-4">
@@ -115,12 +135,15 @@ export function PlayerBar() {
               </div>
               <p className="text-sm text-muted-foreground truncate">
                 {currentStation.country}
-                {isLoading && (
-                  <span className="ml-2 text-xs text-muted-foreground inline-flex items-center gap-1">
-                    <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
-                    Stabilisation du flux…
-                  </span>
-                )}
+                <span className="ml-2 text-xs inline-flex items-center gap-2 text-muted-foreground ui-fade">
+                  <span className={`h-2 w-2 rounded-full ${isError ? 'bg-destructive' : isPlaying ? 'bg-emerald-400' : isPaused ? 'bg-amber-400' : 'bg-muted-foreground/60'}`} />
+                  <span>{statusLabel}</span>
+                  {isLoading && totalCandidates > 1 && (
+                    <span className="text-[10px] text-muted-foreground">
+                      Tentative {candidateIndex + 1}/{totalCandidates}
+                    </span>
+                  )}
+                </span>
                 {/* Unstable stream warning */}
                 {isUnstable && isPlaying && (
                   <span className="ml-2 text-red-400 inline-flex items-center gap-1">
@@ -136,6 +159,21 @@ export function PlayerBar() {
                   </span>
                 )}
               </p>
+              {isError && (
+                <div className="mt-1 flex items-center gap-2 text-xs text-destructive ui-fade">
+                  <span>{error || 'Flux indisponible'}</span>
+                  {currentStation && (
+                    <button
+                      type="button"
+                      onClick={() => play(currentStation)}
+                      className="neo-button px-2 py-1 text-[11px] inline-flex items-center gap-1"
+                    >
+                      <RotateCw className="w-3 h-3" />
+                      Réessayer
+                    </button>
+                  )}
+                </div>
+              )}
             </>
           ) : (
             <>

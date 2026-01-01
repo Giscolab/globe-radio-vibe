@@ -57,7 +57,7 @@ serve(async (req) => {
         apiPath = `/json/stations/search?countrycode=${countryCode}&limit=${limit}&offset=${offset}&hidebroken=true&order=clickcount&reverse=true`;
         break;
 
-      case "search":
+      case "search": {
         const params = new URLSearchParams();
         if (name) params.set("name", name);
         if (tag) params.set("tag", tag);
@@ -69,6 +69,7 @@ serve(async (req) => {
         params.set("reverse", "true");
         apiPath = `/json/stations/search?${params.toString()}`;
         break;
+      }
 
       case "topclick":
         apiPath = `/json/stations/topclick/${limit}`;
@@ -78,7 +79,7 @@ serve(async (req) => {
         apiPath = `/json/stations/topvote/${limit}`;
         break;
 
-      case "byuuid":
+      case "byuuid": {
         const uuid = url.searchParams.get("uuid");
         if (!uuid) {
           return new Response(JSON.stringify({ error: "uuid required" }), {
@@ -88,6 +89,7 @@ serve(async (req) => {
         }
         apiPath = `/json/stations/byuuid/${uuid}`;
         break;
+      }
 
       default:
         apiPath = `/json/stations/topclick/100`;

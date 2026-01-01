@@ -219,6 +219,10 @@
     box-shadow: none;
   }
 
+  .ui-fade {
+    transition: opacity 200ms ease, transform 200ms ease;
+  }
+
   /* Interactive neumorphic button */
   .neo-button {
     background: hsl(var(--neo-bg));
@@ -282,6 +286,12 @@
   /* Globe container */
   .globe-container {
     background: radial-gradient(ellipse at center, hsl(var(--globe-ocean) / 0.8), hsl(var(--background)));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-fade {
+    transition: none;
   }
 }
 

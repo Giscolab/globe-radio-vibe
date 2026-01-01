@@ -71,7 +71,9 @@ class AudioAnalyzer {
       
       // Create AudioContext lazily (requires user interaction)
       if (!this.audioContext) {
-        this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const WebkitAudioContext = (window as Window & { webkitAudioContext?: typeof AudioContext })
+          .webkitAudioContext;
+        this.audioContext = new (window.AudioContext || WebkitAudioContext)();
       }
       
       // Resume if suspended
@@ -85,7 +87,7 @@ class AudioAnalyzer {
       this.analyser.smoothingTimeConstant = 0.8;
       
       // Check if we have a cached source node for this element
-      let cachedSource = sourceNodeCache.get(audioElement);
+      const cachedSource = sourceNodeCache.get(audioElement);
       
       if (cachedSource) {
         // Reuse existing source node
@@ -96,8 +98,8 @@ class AudioAnalyzer {
         try {
           this.source = this.audioContext.createMediaElementSource(audioElement);
           sourceNodeCache.set(audioElement, this.source);
-        } catch (error: any) {
-          if (error.name === 'InvalidStateError') {
+        } catch (error: unknown) {
+          if (error instanceof Error && error.name === 'InvalidStateError') {
             // Element was connected elsewhere - mark as unusable for this session
             logger.debug('AudioAnalyzer', 'Element already has a source node from another context');
             corsBlockedElements.add(audioElement);
@@ -145,7 +147,7 @@ class AudioAnalyzer {
       this.isSilent = false;
       this.previousVolume = 0;
     } catch (error) {
-      // Ignore disconnect errors - nodes may already be disconnected
+      logger.debug('AudioAnalyzer', 'Disconnect error', error);
     }
   }
 
@@ -196,8 +198,8 @@ class AudioAnalyzer {
     }
     
     // Get frequency data - use any cast for WebAudio API compatibility
-    this.analyser.getByteFrequencyData(this.fftData as any);
-    this.analyser.getByteTimeDomainData(this.timeDomainData as any);
+    this.analyser.getByteFrequencyData(this.fftData);
+    this.analyser.getByteTimeDomainData(this.timeDomainData);
     
     // Calculate RMS volume from time domain data
     let sumSquares = 0;

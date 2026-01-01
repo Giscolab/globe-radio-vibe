@@ -1,5 +1,5 @@
 // Engine - Station Service via Edge Function Proxy
-import { Station } from "../types/radio";
+import { Station, type RadioBrowserStation } from "../types/radio";
 import { logger } from "../core/logger";
 
 // Cache simple en mémoire
@@ -42,7 +42,7 @@ function sanitizeUrl(url: string | undefined | null): string | undefined {
 // ----------------------------------
 // Mapping RadioBrowser → Station
 // ----------------------------------
-function mapStation(rb: any): Station {
+function mapStation(rb: RadioBrowserStation): Station {
   return {
     id: rb.stationuuid,
     name: rb.name,
@@ -72,7 +72,17 @@ function mapStation(rb: any): Station {
 // ----------------------------------
 // Call Edge Function Proxy
 // ----------------------------------
-async function callRadioProxy(params: Record<string, string>): Promise<any[]> {
+function isRadioBrowserStation(value: unknown): value is RadioBrowserStation {
+  if (!value || typeof value !== 'object') return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.stationuuid === 'string' &&
+    typeof record.name === 'string' &&
+    typeof record.url === 'string'
+  );
+}
+
+async function callRadioProxy(params: Record<string, string>): Promise<RadioBrowserStation[]> {
   const searchParams = new URLSearchParams(params);
   
   const projectUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -85,7 +95,7 @@ async function callRadioProxy(params: Record<string, string>): Promise<any[]> {
   
   const url = `${projectUrl}/functions/v1/radio-proxy?${searchParams.toString()}`;
   
-  logger.info("StationService", `Calling proxy: ${url}`);
+  logger.debug("StationService", `Calling proxy: ${url}`);
   
   const response = await fetch(url, {
     headers: {
@@ -106,7 +116,9 @@ async function callRadioProxy(params: Record<string, string>): Promise<any[]> {
     throw new Error(result.error);
   }
   
-  return Array.isArray(result) ? result : [];
+  if (!Array.isArray(result)) return [];
+
+  return result.filter(isRadioBrowserStation);
 }
 
 // ----------------------------------
@@ -123,7 +135,7 @@ export async function getStationsByCountry(
     return cache.get(key)!.data;
   }
 
-  logger.info("StationService", `Fetching stations for ${countryCode}`);
+    logger.debug("StationService", `Fetching stations for ${countryCode}`);
 
   try {
     const result = await callRadioProxy({
@@ -134,7 +146,7 @@ export async function getStationsByCountry(
 
     const stations = result.map(mapStation);
     
-    logger.info("StationService", `Got ${stations.length} stations for ${countryCode}`);
+    logger.debug("StationService", `Got ${stations.length} stations for ${countryCode}`);
 
     cache.set(key, { timestamp: Date.now(), data: stations });
     return stations;
@@ -152,7 +164,7 @@ export async function searchStations(query: string): Promise<Station[]> {
 
   if (isCacheValid(key)) return cache.get(key)!.data;
 
-  logger.info("StationService", `Searching: ${query}`);
+  logger.debug("StationService", `Searching: ${query}`);
 
   try {
     const result = await callRadioProxy({
@@ -179,7 +191,7 @@ export async function getTopStations(limit = 100): Promise<Station[]> {
 
   if (isCacheValid(key)) return cache.get(key)!.data;
 
-  logger.info("StationService", `Fetching top ${limit} stations`);
+  logger.debug("StationService", `Fetching top ${limit} stations`);
 
   try {
     const result = await callRadioProxy({

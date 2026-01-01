@@ -139,7 +139,9 @@ class FaviconColorCache {
     this.memoryCache.clear();
     try {
       localStorage.removeItem(CACHE_KEY);
-    } catch {}
+    } catch (error) {
+      console.warn('[FaviconColorCache] Failed to clear storage:', error);
+    }
   }
 
   /**

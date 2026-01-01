@@ -17,6 +17,7 @@ class HealthMonitor {
   private monitoredStations: Map<string, MonitoredStation> = new Map();
   private listeners: Set<HealthUpdateCallback> = new Set();
   private intervalId: ReturnType<typeof setInterval> | null = null;
+  private startTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private isRunning = false;
   private isPaused = false;
   private cursor = 0;
@@ -43,7 +44,7 @@ class HealthMonitor {
     log.info(`Starting with ${intervalMs / 1000}s interval`);
     
     // Delay initial check to not block startup
-    setTimeout(() => {
+    this.startTimeoutId = setTimeout(() => {
       if (this.isRunning && !this.isPaused) {
         this.checkAll();
       }
@@ -64,6 +65,10 @@ class HealthMonitor {
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
+    }
+    if (this.startTimeoutId) {
+      clearTimeout(this.startTimeoutId);
+      this.startTimeoutId = null;
     }
     this.isRunning = false;
     log.info('Stopped');

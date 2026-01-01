@@ -151,26 +151,22 @@ type DeepPartial<T> = {
 
 // Helper function for deep merge
 function deepMerge<T extends object>(target: T, source: DeepPartial<T>): T {
-  const result = { ...target };
-  
-  for (const key in source) {
+  const result = { ...target } as T;
+  const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null && !Array.isArray(value);
+
+  for (const key of Object.keys(source) as Array<keyof T>) {
     const sourceValue = source[key];
     const targetValue = target[key];
-    
-    if (sourceValue !== undefined) {
-      if (
-        typeof sourceValue === 'object' &&
-        sourceValue !== null &&
-        typeof targetValue === 'object' &&
-        targetValue !== null &&
-        !Array.isArray(sourceValue)
-      ) {
-        (result as any)[key] = deepMerge(targetValue as object, sourceValue as object);
-      } else {
-        (result as any)[key] = sourceValue;
-      }
+
+    if (sourceValue === undefined) continue;
+
+    if (isRecord(sourceValue) && isRecord(targetValue)) {
+      result[key] = deepMerge(targetValue, sourceValue as DeepPartial<typeof targetValue>);
+    } else {
+      result[key] = sourceValue as T[typeof key];
     }
   }
-  
+
   return result;
 }

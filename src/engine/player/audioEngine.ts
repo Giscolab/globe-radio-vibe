@@ -49,6 +49,8 @@ export interface AudioEngineState {
 }
 
 type StateListener = (state: AudioEngineState) => void;
+type HowlerSound = { _node?: HTMLAudioElement | null };
+type HowlerInternal = Howl & { _sounds?: HowlerSound[] };
 
 // =======================
 // AUDIO ENGINE
@@ -77,11 +79,13 @@ class AudioEngine {
   private analyzerConnected = false;
   private playbackTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private proxySwitchTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  private analyzerConnectTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private suppressReconnect = false;
   private reconnectInProgress = false;
   private reconnectToken = 0;
   private isTransitioning = false;
   private transitionToken = 0;
+  private transitionQueue: Promise<void> = Promise.resolve();
 
   // =======================
   // STATE MANAGEMENT
@@ -129,12 +133,14 @@ class AudioEngine {
     if (safeAudioModeEnabled || this.analyzerConnected || !this.howl) return;
 
     try {
-      const node = (this.howl as any)._sounds?.[0]?._node as HTMLAudioElement;
+      const node = (this.howl as HowlerInternal)?._sounds?.[0]?._node ?? null;
       if (node && node.readyState >= 2) {
         this.analyzerConnected = audioAnalyzer.connect(node);
-        logger.info('AudioEngine', 'WebAudio analyzer connected');
+        logger.debug('AudioEngine', 'WebAudio analyzer connected');
       }
-    } catch {}
+    } catch (error) {
+      logger.debug('AudioEngine', 'Analyzer connection failed', error);
+    }
   }
 
   private disconnectAnalyzer(): void {
@@ -156,6 +162,12 @@ class AudioEngine {
     }
   }
 
+  private runTransition(task: () => Promise<void> | void): Promise<void> {
+    const run = this.transitionQueue.then(() => Promise.resolve(task()));
+    this.transitionQueue = run.catch(() => {});
+    return run;
+  }
+
   // =======================
   // CLEANUP
   // =======================
@@ -174,12 +186,44 @@ class AudioEngine {
     }
   }
 
+  private clearAnalyzerConnectTimeout() {
+    if (this.analyzerConnectTimeoutId) {
+      clearTimeout(this.analyzerConnectTimeoutId);
+      this.analyzerConnectTimeoutId = null;
+    }
+  }
+
   private stopInternal(): void {
     this.clearPlaybackTimeout();
     this.clearProxySwitchTimeout();
+    this.clearAnalyzerConnectTimeout();
     this.recordPlayTime();
     this.disconnectAnalyzer();
     this.setState({ status: 'idle' });
+  }
+
+  private stopCore(): void {
+    this.clearPlaybackTimeout();
+    this.clearProxySwitchTimeout();
+    this.clearAnalyzerConnectTimeout();
+    this.suppressReconnect = this.howl !== null;
+
+    if (this.howl) {
+      this.recordPlayTime();
+      this.disconnectAnalyzer();
+      this.howl.unload();
+      this.howl = null;
+    }
+
+    this.setState({
+      status: 'idle',
+      currentStation: null,
+      error: null,
+      currentUrl: null,
+      urlType: null,
+      candidateIndex: 0,
+      totalCandidates: 0,
+    });
   }
 
   // =======================
@@ -199,7 +243,20 @@ class AudioEngine {
       const urlType = this.getUrlType(url);
       this.setState({ currentUrl: url, urlType });
 
-      logger.info('AudioEngine', `Trying ${urlType} URL: ${url}`);
+      logger.debug('AudioEngine', `Trying ${urlType} URL: ${url}`);
+
+      const safeCallback = (label: string, callback: () => void | Promise<void>) => {
+        try {
+          const result = callback();
+          if (result instanceof Promise) {
+            result.catch((error) => {
+              logger.error('AudioEngine', `Callback ${label} failed`, error);
+            });
+          }
+        } catch (error) {
+          logger.error('AudioEngine', `Callback ${label} failed`, error);
+        }
+      };
 
       this.howl = new Howl({
         src: [url],
@@ -207,7 +264,7 @@ class AudioEngine {
         volume: this.state.muted ? 0 : this.state.volume,
         format: ['mp3', 'aac', 'ogg', 'opus'],
 
-        onplay: () => {
+        onplay: () => safeCallback('onplay', () => {
           this.clearPlaybackTimeout();
           this.playStartTime = Date.now();
           this.setState({ status: 'playing', error: null });
@@ -215,18 +272,19 @@ class AudioEngine {
           playerMetrics.recordPlay(station.id);
           healthHistory.record({ stationId: station.id, ok: true, latency: 0 });
 
-          setTimeout(() => this.connectAnalyzer(), 500);
+          this.clearAnalyzerConnectTimeout();
+          this.analyzerConnectTimeoutId = setTimeout(() => this.connectAnalyzer(), 500);
 
           if (urlType === 'proxy') {
             this.scheduleProxySwitch(station);
           }
 
           resolve();
-        },
+        }),
 
-        onpause: () => this.setState({ status: 'paused' }),
-        onstop: () => this.handleStreamEnded('stop'),
-        onend: () => this.handleStreamEnded('end'),
+        onpause: () => safeCallback('onpause', () => this.setState({ status: 'paused' })),
+        onstop: () => safeCallback('onstop', () => this.handleStreamEnded('stop')),
+        onend: () => safeCallback('onend', () => this.handleStreamEnded('end')),
 
         onloaderror: (_, err) => reject(new Error(`Load error: ${err}`)),
         onplayerror: (_, err) => reject(new Error(`Play error: ${err}`)),
@@ -236,7 +294,11 @@ class AudioEngine {
         reject(new Error('Playback timeout'));
       }, PLAYBACK_START_TIMEOUT);
 
-      this.howl.play();
+      try {
+        this.howl.play();
+      } catch (error) {
+        reject(error);
+      }
     });
   }
 
@@ -291,7 +353,7 @@ class AudioEngine {
       const currentProxyUrl = this.state.currentUrl;
       if (!currentProxyUrl) return;
 
-      logger.info('AudioEngine', `Switching ${station.name} from proxy to direct`);
+      logger.debug('AudioEngine', `Switching ${station.name} from proxy to direct`);
       this.tryPlayUrl(direct, station).catch(() => {
         if (this.state.currentStation?.id !== station.id) return;
         this.tryPlayUrl(currentProxyUrl, station).catch(() => {});
@@ -304,83 +366,70 @@ class AudioEngine {
   // =======================
 
   async play(station: Station): Promise<void> {
-    const transitionToken = this.beginTransition();
+    return this.runTransition(async () => {
+      const transitionToken = this.beginTransition();
 
-    try {
-      this.reconnectToken++;
-      this.reconnectInProgress = false;
-      this.stop();
+      try {
+        this.reconnectToken++;
+        this.reconnectInProgress = false;
+        this.stopCore();
 
-      const candidates = buildCandidateUrls(station);
+        const candidates = buildCandidateUrls(station);
 
-      if (this.transitionToken !== transitionToken) return;
+        if (this.transitionToken !== transitionToken) return;
 
-      if (!candidates.length) {
-        const raw = [station.urlResolved, station.url].filter(Boolean);
-        const hasHls = raw.some(isHlsStream);
+        if (!candidates.length) {
+          const raw = [station.urlResolved, station.url].filter(Boolean);
+          const hasHls = raw.some(isHlsStream);
+
+          this.setState({
+            status: 'error',
+            currentStation: station,
+            error: hasHls && !browserSupportsHls()
+              ? 'Format HLS non supporté'
+              : 'Aucune URL valide',
+            currentUrl: null,
+            urlType: null,
+            candidateIndex: 0,
+            totalCandidates: 0,
+          });
+          return;
+        }
+
+        this.setState({
+          status: 'loading',
+          currentStation: station,
+          error: null,
+          totalCandidates: candidates.length,
+        });
+
+        for (let i = 0; i < candidates.length; i++) {
+          if (this.transitionToken !== transitionToken) return;
+          this.setState({ candidateIndex: i });
+          try {
+            await this.tryPlayUrl(candidates[i], station);
+            return;
+          } catch (error) {
+            logger.debug('AudioEngine', 'Candidate URL failed', error);
+          }
+        }
+
+        if (this.transitionToken !== transitionToken) return;
 
         this.setState({
           status: 'error',
-          currentStation: station,
-          error: hasHls && !browserSupportsHls()
-            ? 'Format HLS non supporté'
-            : 'Aucune URL valide',
-          currentUrl: null,
-          urlType: null,
-          candidateIndex: 0,
-          totalCandidates: 0,
+          error: 'Échec de lecture',
         });
-        return;
+      } finally {
+        this.endTransition(transitionToken);
       }
-
-      this.setState({
-        status: 'loading',
-        currentStation: station,
-        error: null,
-        totalCandidates: candidates.length,
-      });
-
-      for (let i = 0; i < candidates.length; i++) {
-        if (this.transitionToken !== transitionToken) return;
-        this.setState({ candidateIndex: i });
-        try {
-          await this.tryPlayUrl(candidates[i], station);
-          return;
-        } catch {}
-      }
-
-      if (this.transitionToken !== transitionToken) return;
-
-      this.setState({
-        status: 'error',
-        error: 'Échec de lecture',
-      });
-    } finally {
-      this.endTransition(transitionToken);
-    }
+    });
   }
 
   stop(): void {
-    this.clearPlaybackTimeout();
-    this.clearProxySwitchTimeout();
-    this.suppressReconnect = this.howl !== null;
-
-    if (this.howl) {
-      this.recordPlayTime();
-      this.disconnectAnalyzer();
-      this.howl.unload();
-      this.howl = null;
-    }
-
-    this.setState({
-      status: 'idle',
-      currentStation: null,
-      error: null,
-      currentUrl: null,
-      urlType: null,
-      candidateIndex: 0,
-      totalCandidates: 0,
-    });
+    this.runTransition(() => {
+      this.stopCore();
+    }).catch(() => {});
   }
 
   pause(): void {
@@ -392,7 +441,11 @@ class AudioEngine {
   }
 
   toggle(): void {
-    this.state.status === 'playing' ? this.pause() : this.resume();
+    if (this.state.status === 'playing') {
+      this.pause();
+    } else {
+      this.resume();
+    }
   }
 
   setVolume(volume: number): void {
@@ -426,7 +479,7 @@ class AudioEngine {
 
   getAudioElement(): HTMLAudioElement | null {
     try {
-      return (this.howl as any)?._sounds?.[0]?._node ?? null;
+      return (this.howl as HowlerInternal | null)?._sounds?.[0]?._node ?? null;
     } catch {
       return null;
     }

@@ -8,4 +8,4 @@ export {
   type AmbienceType 
 } from './searchAI';
 
-export { aiEngine } from './aiEngine';
+export { aiEngine, type AIExplanation } from './aiEngine';

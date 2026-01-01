@@ -1,6 +1,7 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { useRadioStore, type PlayRecord } from '@/stores/radio';
 import { getSqliteRepository } from '@/engine/storage/sqlite/stationRepository';
+import { aiEngine } from '@/engine/radio/ai';
 import type { Station } from '@/engine/types';
 
 export function useHistory() {
@@ -50,7 +51,9 @@ export function useHistory() {
         const repo = getSqliteRepository();
         repo.upsert(station);
         repo.recordPlay(station.id, durationSeconds);
+        repo.recordSignal('play', station.id, { durationSeconds });
         storeAddToHistory(station, durationSeconds);
+        aiEngine.invalidateCache();
       } catch (error) {
         console.error('Failed to persist play history:', error);
       } finally {
@@ -64,6 +67,7 @@ export function useHistory() {
     storeClearHistory();
     try {
       getSqliteRepository().clearHistory();
+      aiEngine.invalidateCache();
     } catch (error) {
       console.error('Failed to clear history in SQLite:', error);
     }
