@@ -1,6 +1,7 @@
 import { Play, Pause, Volume2, VolumeX, Radio, AlertCircle, WifiOff, Shield } from 'lucide-react';
 import { usePlayer } from '@/hooks/usePlayer';
 import { useRadioStore } from '@/stores/radio.store';
+import { useSettingsStore } from '@/stores/settings.store';
 import { useAudioAnalysis } from '@/hooks/useAudioAnalysis';
 import { AudioVisualizer } from './AudioVisualizer';
 import { FallbackVisualizer } from './FallbackVisualizer';
@@ -23,15 +24,19 @@ export function PlayerBar() {
   } = usePlayer();
   
   const { stationHealth } = useRadioStore();
+  const { safeAudioMode } = useSettingsStore();
   
   const isPlaying = status === 'playing';
   const isLoading = status === 'loading';
   
-  // Get audio analysis data when playing
+  // Only use audio analysis when NOT in safe mode and playing
   const { fft, volume: audioVolume, peak, silent, isCorsBlocked } = useAudioAnalysis({ 
-    enabled: isPlaying,
+    enabled: isPlaying && !safeAudioMode,
     fps: 30 
   });
+  
+  // Use fallback visualizer in safe mode or when CORS blocked
+  const useFallback = safeAudioMode || isCorsBlocked;
   
   // Enrich station for quality badge
   const enrichedStation = currentStation ? enrichStationSync(currentStation) : null;
@@ -134,10 +139,10 @@ export function PlayerBar() {
           )}
         </div>
 
-        {/* Mini visualizer - uses fallback when CORS blocks WebAudio */}
+        {/* Mini visualizer - uses fallback in safe mode or when CORS blocks WebAudio */}
         {isPlaying && (
           <div className="hidden sm:block">
-            {isCorsBlocked ? (
+            {useFallback ? (
               <FallbackVisualizer
                 isPlaying={isPlaying}
                 mode="bars"

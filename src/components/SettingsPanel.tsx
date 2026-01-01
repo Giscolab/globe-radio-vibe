@@ -1,23 +1,29 @@
 // Component - SettingsPanel: user settings, proxy statistics, and audio diagnostics
-import { Shield, Info, BarChart3, Activity, Radio, Wifi, WifiOff } from 'lucide-react';
+import { Shield, Info, BarChart3, Activity, Radio, Wifi, WifiOff, Volume2, Headphones } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
+import { Button } from '@/components/ui/button';
 import { useSettingsStore } from '@/stores/settings.store';
 import { useRadioStore } from '@/stores/radio.store';
 import { needsProxy, setForceProxy as setForceProxyEngine } from '@/engine/radio/utils/httpsUpgrade';
-import { useMemo, useEffect, useState } from 'react';
+import { setSafeAudioMode as setSafeAudioModeEngine } from '@/engine/player/audioEngine';
+import { useMemo, useEffect, useState, useCallback } from 'react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { usePlayer } from '@/hooks/usePlayer';
 import { audioEngine } from '@/engine/player/audioEngine';
 import { Badge } from '@/components/ui/badge';
 
 export function SettingsPanel() {
-  const { forceProxy, setForceProxy } = useSettingsStore();
+  const { forceProxy, setForceProxy, safeAudioMode, setSafeAudioMode } = useSettingsStore();
   const { stations, topStations } = useRadioStore();
   
-  // Sync engine force proxy state with store
+  // Sync engine states with store
   useEffect(() => {
     setForceProxyEngine(forceProxy);
   }, [forceProxy]);
+  
+  useEffect(() => {
+    setSafeAudioModeEngine(safeAudioMode);
+  }, [safeAudioMode]);
   
   // Calculate proxy statistics
   const proxyStats = useMemo(() => {
@@ -42,6 +48,43 @@ export function SettingsPanel() {
 
   return (
     <div className="p-4 space-y-6">
+      {/* Safe Audio Mode - PRIORITY */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Headphones className="w-5 h-5 text-primary" />
+          <h3 className="font-semibold text-foreground">Mode Audio</h3>
+        </div>
+        
+        <div className="neo-inset p-4 rounded-lg space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-foreground">Mode audio sûr</span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Info className="w-4 h-4 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p>Désactive l'analyse WebAudio pour maximiser la compatibilité. Activez si vous n'entendez pas de son.</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+            <Switch 
+              checked={safeAudioMode} 
+              onCheckedChange={setSafeAudioMode}
+            />
+          </div>
+          
+          <p className="text-xs text-muted-foreground">
+            {safeAudioMode 
+              ? "✓ Lecture pure HTML5 - compatibilité maximale, pas de visualiseur."
+              : "Analyse audio active - visualiseur disponible mais peut causer des problèmes."}
+          </p>
+          
+          {/* Test beep button */}
+          <TestBeepButton />
+        </div>
+      </div>
+
       {/* Proxy Settings */}
       <div className="space-y-4">
         <div className="flex items-center gap-2">
@@ -178,6 +221,74 @@ function StatItem({
     <div className={`p-2 rounded ${highlight ? 'bg-primary/10' : ''}`}>
       <div className={`text-xl font-bold ${color}`}>{value}</div>
       <div className="text-xs text-muted-foreground">{label}</div>
+    </div>
+  );
+}
+
+/**
+ * Test beep button - plays a local oscillator to verify audio output
+ */
+function TestBeepButton() {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [result, setResult] = useState<'success' | 'error' | null>(null);
+  
+  const playTestBeep = useCallback(() => {
+    if (isPlaying) return;
+    
+    setIsPlaying(true);
+    setResult(null);
+    
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.value = 440; // A4 note
+      oscillator.type = 'sine';
+      
+      // Fade in and out to avoid clicks
+      gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+      gainNode.gain.linearRampToValueAtTime(0.3, audioContext.currentTime + 0.1);
+      gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.9);
+      
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 1);
+      
+      oscillator.onended = () => {
+        setIsPlaying(false);
+        setResult('success');
+        audioContext.close();
+        setTimeout(() => setResult(null), 3000);
+      };
+    } catch (e) {
+      console.error('Test beep error:', e);
+      setIsPlaying(false);
+      setResult('error');
+      setTimeout(() => setResult(null), 3000);
+    }
+  }, [isPlaying]);
+  
+  return (
+    <div className="flex items-center gap-3">
+      <Button 
+        variant="outline" 
+        size="sm"
+        onClick={playTestBeep}
+        disabled={isPlaying}
+        className="gap-2"
+      >
+        <Volume2 className="w-4 h-4" />
+        {isPlaying ? 'Bip en cours...' : 'Jouer un bip test'}
+      </Button>
+      {result === 'success' && (
+        <span className="text-xs text-emerald-500">✓ Si vous avez entendu le bip, votre sortie audio fonctionne</span>
+      )}
+      {result === 'error' && (
+        <span className="text-xs text-destructive">✗ Erreur lors du test</span>
+      )}
     </div>
   );
 }
