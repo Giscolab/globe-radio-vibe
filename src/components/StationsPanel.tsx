@@ -12,7 +12,7 @@ import { SearchBar } from './SearchBar';
 import { FilterPanel } from './FilterPanel';
 import { AmbienceChips } from './AmbienceChips';
 import { RecommendationsPanel } from './RecommendationsPanel';
-import { searchByAmbience, syncEmbeddings, type AmbienceType } from '@/engine/radio/ai/searchAI';
+import { aiEngine, syncEmbeddings, type AmbienceType } from '@/engine/radio/ai';
 import { enrichStationSync } from '@/engine/radio/enrichment/stationEnricher';
 import { healthMonitor } from '@/engine/radio/health';
 import { getTopStations } from '@/engine/radio/stationService';
@@ -148,7 +148,7 @@ export function StationsPanel({ onClose }: StationsPanelProps) {
     setIsAISearching(true);
     
     try {
-      const results = await searchByAmbience(ambience, stationsToSearch);
+      const results = await aiEngine.searchByAmbience(ambience, stationsToSearch);
       setAISearchResults(results);
     } catch (error) {
       console.error('Ambience search failed:', error);

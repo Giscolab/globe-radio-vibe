@@ -1,4 +1,4 @@
-// Store - AI Search: AI-powered search state with safe cache
+// Store - AI Search: cache + progress state only (no side effects or playback control)
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import type { Station } from '@/engine/types';

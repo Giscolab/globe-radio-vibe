@@ -115,6 +115,12 @@ export function PlayerBar() {
               </div>
               <p className="text-sm text-muted-foreground truncate">
                 {currentStation.country}
+                {isLoading && (
+                  <span className="ml-2 text-xs text-muted-foreground inline-flex items-center gap-1">
+                    <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
+                    Stabilisation du flux…
+                  </span>
+                )}
                 {/* Unstable stream warning */}
                 {isUnstable && isPlaying && (
                   <span className="ml-2 text-red-400 inline-flex items-center gap-1">

@@ -7,3 +7,5 @@ export {
   syncEmbeddings,
   type AmbienceType 
 } from './searchAI';
+
+export { aiEngine } from './aiEngine';
