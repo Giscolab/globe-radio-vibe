@@ -134,7 +134,7 @@ export function useAudioVolume(enabled: boolean = true) {
         animationRef.current = null;
       }
     };
-  }, [enabled, volume, peak]);
+  }, [enabled, volume, peak, FRAME_INTERVAL]);
 
   return { volume, peak, volumeRef, peakRef };
 }

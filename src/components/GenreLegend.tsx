@@ -1,6 +1,6 @@
 // Component - GenreLegend: shows color legend for genre markers on globe
 import { memo } from 'react';
-import { GENRE_COLOR_HEX } from './StationsLayer';
+import { GENRE_COLOR_HEX } from './stations-layer-colors';
 import { getGenreLabel, getGenreIcon } from '@/engine/radio/enrichment/genreMapper';
 
 const VISIBLE_GENRES = ['pop', 'rock', 'jazz', 'classical', 'electronic', 'hiphop', 'world', 'other'];
