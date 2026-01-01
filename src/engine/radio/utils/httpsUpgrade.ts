@@ -154,22 +154,23 @@ export function upgradeToHttps(url: string): string {
 
 /**
  * Get a secure playable URL for a stream
- * - Returns original if already HTTPS
+ * - Returns original if already HTTPS (unless forceProxy is enabled)
  * - Upgrades to HTTPS if domain supports it
  * - Returns proxy URL for HTTP-only streams
- * - If forceProxy is enabled, always uses proxy for HTTP
+ * - If forceProxy is enabled, always uses proxy for ALL streams (including HTTPS)
  */
 export function getSecureStreamUrl(url: string): string {
   if (!url) return url;
   
+  // If force proxy is enabled, use proxy for ALL streams (including HTTPS)
+  // This helps when direct HTTPS fails due to CORS/Origin restrictions
+  if (forceProxyEnabled) {
+    return buildProxyUrl(url);
+  }
+  
   // Already secure
   if (url.startsWith('https://')) {
     return url;
-  }
-  
-  // If force proxy is enabled, use proxy for all HTTP streams
-  if (forceProxyEnabled) {
-    return buildProxyUrl(url);
   }
   
   // Try HTTPS upgrade for known domains
@@ -179,6 +180,63 @@ export function getSecureStreamUrl(url: string): string {
   
   // Use proxy for HTTP-only streams
   return buildProxyUrl(url);
+}
+
+/**
+ * Check if a URL is HLS (m3u8) format
+ */
+export function isHlsStream(url: string): boolean {
+  if (!url) return false;
+  try {
+    const pathname = new URL(url).pathname.toLowerCase();
+    return pathname.endsWith('.m3u8') || pathname.includes('.m3u8');
+  } catch {
+    return url.toLowerCase().includes('.m3u8');
+  }
+}
+
+/**
+ * Check if the current browser supports HLS natively
+ */
+export function browserSupportsHls(): boolean {
+  // Safari supports HLS natively
+  const ua = navigator.userAgent.toLowerCase();
+  return ua.includes('safari') && !ua.includes('chrome');
+}
+
+/**
+ * Build candidate URLs for playback (direct + proxy fallbacks)
+ */
+export function buildCandidateUrls(station: { url?: string; urlResolved?: string }): string[] {
+  const rawUrls = [station.urlResolved, station.url].filter(Boolean) as string[];
+  const candidates: string[] = [];
+  const seen = new Set<string>();
+  
+  for (const rawUrl of rawUrls) {
+    // Skip HLS on non-Safari browsers
+    if (isHlsStream(rawUrl) && !browserSupportsHls()) {
+      console.warn('[httpsUpgrade] Skipping HLS stream on non-Safari browser:', rawUrl);
+      continue;
+    }
+    
+    // Add direct secure URL
+    const secureUrl = getSecureStreamUrl(rawUrl);
+    if (!seen.has(secureUrl)) {
+      candidates.push(secureUrl);
+      seen.add(secureUrl);
+    }
+    
+    // Add proxy URL as fallback (if not already proxied and not force proxy)
+    if (!forceProxyEnabled && !secureUrl.includes('audio-stream-proxy')) {
+      const proxyUrl = buildProxyUrl(rawUrl);
+      if (!seen.has(proxyUrl)) {
+        candidates.push(proxyUrl);
+        seen.add(proxyUrl);
+      }
+    }
+  }
+  
+  return candidates;
 }
 
 /**
