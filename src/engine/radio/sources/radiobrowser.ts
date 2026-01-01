@@ -18,16 +18,82 @@ function getNextServer(): string {
   return server;
 }
 
+/**
+ * Upgrade HTTP URL to HTTPS if possible
+ * Many radio streams support both protocols
+ */
+function upgradeToHttps(url: string): string {
+  if (!url) return url;
+  
+  // Already HTTPS
+  if (url.startsWith('https://')) return url;
+  
+  // Common patterns that support HTTPS
+  const httpsCompatibleDomains = [
+    'icecast.radiofrance.fr',
+    'stream.radiofrance.fr',
+    'radioparadise.com',
+    'bbcmedia.co.uk',
+    'bbc.co.uk',
+    'laut.fm',
+    'streamtheworld.com',
+    'live365.com',
+    'radionomy.com',
+    'shoutcast.com',
+    'akamaized.net',
+    'cloudfront.net',
+    'stream.laut.fm',
+    'sslstream.dlf.de',
+    'rndfnk.com',
+    'swr.de',
+    'br.de',
+    'ndr.de',
+    'wdr.de',
+    'mdr.de',
+    'rbb-online.de',
+    'deutschlandradio.de',
+  ];
+  
+  try {
+    const urlObj = new URL(url);
+    const hostname = urlObj.hostname.toLowerCase();
+    
+    // Check if domain is known to support HTTPS
+    const supportsHttps = httpsCompatibleDomains.some(domain => 
+      hostname.includes(domain)
+    );
+    
+    if (supportsHttps) {
+      urlObj.protocol = 'https:';
+      return urlObj.toString();
+    }
+  } catch {
+    // Invalid URL, return as-is
+  }
+  
+  return url;
+}
+
 function normalizeStation(raw: z.infer<typeof RadioBrowserStationSchema>): Station {
   const tags = raw.tags ? raw.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
+  
+  // Prefer urlResolved (direct stream), upgrade to HTTPS when possible
+  const rawUrl = raw.url_resolved || raw.url;
+  const upgradedUrl = upgradeToHttps(rawUrl);
+  
+  // Also upgrade the original URL
+  const originalUrl = upgradeToHttps(raw.url);
+  
+  // Upgrade favicon to HTTPS
+  const favicon = raw.favicon ? upgradeToHttps(raw.favicon) : undefined;
   
   return {
     id: raw.stationuuid,
     name: raw.name,
-    url: raw.url,
-    urlResolved: raw.url_resolved || undefined,
+    url: upgradedUrl,
+    urlResolved: raw.url_resolved ? upgradeToHttps(raw.url_resolved) : undefined,
     homepage: raw.homepage || undefined,
-    favicon: raw.favicon || undefined,
+    favicon,
     country: raw.country,
     countryCode: raw.countrycode || undefined,
     state: raw.state || undefined,
