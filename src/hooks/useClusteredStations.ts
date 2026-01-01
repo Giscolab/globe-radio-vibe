@@ -16,10 +16,9 @@ interface UseClusteredStationsResult {
   clear: () => void;
 }
 
-export function useClusteredStations(
-  options: UseClusteredStationsOptions = {}
-): UseClusteredStationsResult {
+export function useClusteredStations(options: UseClusteredStationsOptions = {}): UseClusteredStationsResult {
   const { enabled = true, ...clusterOptions } = options;
+  const clusterOptionsKey = useMemo(() => JSON.stringify(clusterOptions), [clusterOptions]);
 
   const clusterRef = useRef<StationCluster | null>(null);
   const stationsMapRef = useRef<Map<string, Station>>(new Map());
@@ -36,7 +35,8 @@ export function useClusteredStations(
       return;
     }
 
-    clusterRef.current = new StationCluster(clusterOptions);
+    const parsedOptions = JSON.parse(clusterOptionsKey) as ClusterOptions;
+    clusterRef.current = new StationCluster(parsedOptions);
     setClusters([]);
     setIsLoaded(false);
 
@@ -44,7 +44,7 @@ export function useClusteredStations(
       clusterRef.current?.clear();
       clusterRef.current = null;
     };
-  }, [enabled, JSON.stringify(clusterOptions)]);
+  }, [enabled, clusterOptionsKey]);
 
   const loadStations = useCallback((stations: Station[]) => {
     if (!clusterRef.current) return;

@@ -43,7 +43,7 @@ export function useEnrichedStation(station: Station | null) {
     return () => {
       cancelled = true;
     };
-  }, [station?.id]);
+  }, [station]);
 
   return { enriched, isEnriching };
 }

@@ -1,5 +1,5 @@
 // Recommendations Panel - Personalized station suggestions
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Sparkles, RefreshCw, Radio } from 'lucide-react';
 import { useRadioStore } from '@/stores/radio';
 import { aiEngine, type AIExplanation } from '@/engine/radio/ai';
@@ -11,7 +11,7 @@ export function RecommendationsPanel() {
   const [isLoading, setIsLoading] = useState(false);
   const [explanations, setExplanations] = useState<Record<string, AIExplanation>>({});
 
-  const loadRecommendations = async () => {
+  const loadRecommendations = useCallback(async () => {
     if (stations.length === 0) return;
     
     setIsLoading(true);
@@ -24,13 +24,13 @@ export function RecommendationsPanel() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [stations, setRecommendations]);
 
   useEffect(() => {
     if (stations.length > 0 && recommendations.length === 0) {
-      loadRecommendations();
+      void loadRecommendations();
     }
-  }, [stations.length]);
+  }, [loadRecommendations, recommendations.length, stations.length]);
 
   const handleStationClick = (station: typeof stations[0]) => {
     if (currentStation?.id === station.id && isPlaying) {

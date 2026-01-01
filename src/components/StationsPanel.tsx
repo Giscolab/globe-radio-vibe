@@ -131,7 +131,7 @@ export function StationsPanel({ onClose }: StationsPanelProps) {
         processBatch();
       });
     }
-  }, [stations.length, topStations.length, hasSynced, selectedCountry]);
+  }, [stations, topStations, hasSynced, selectedCountry]);
 
   // Handle ambience selection
   const handleAmbienceSelect = async (ambience: AmbienceType) => {
