@@ -16,7 +16,9 @@ interface UseClusteredStationsResult {
   clear: () => void;
 }
 
-export function useClusteredStations(options: UseClusteredStationsOptions = {}): UseClusteredStationsResult {
+export function useClusteredStations(
+  options: UseClusteredStationsOptions = {}
+): UseClusteredStationsResult {
   const { enabled = true, ...clusterOptions } = options;
   const clusterOptionsKey = useMemo(() => JSON.stringify(clusterOptions), [clusterOptions]);
 
@@ -26,7 +28,7 @@ export function useClusteredStations(options: UseClusteredStationsOptions = {}):
   const [clusters, setClusters] = useState<Cluster[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // Recreate cluster when options change
+  // Init / reset cluster
   useEffect(() => {
     if (!enabled) {
       clusterRef.current = null;
@@ -46,6 +48,7 @@ export function useClusteredStations(options: UseClusteredStationsOptions = {}):
     };
   }, [enabled, clusterOptionsKey]);
 
+  // Load stations ONCE
   const loadStations = useCallback((stations: Station[]) => {
     if (!clusterRef.current) return;
 
@@ -53,32 +56,34 @@ export function useClusteredStations(options: UseClusteredStationsOptions = {}):
     stations.forEach(s => stationsMapRef.current.set(s.id, s));
 
     clusterRef.current.loadStations(stations);
+
+    // ← C’EST ICI qu’on met à jour le state
+    setClusters(clusterRef.current.getClusters([-180, -85, 180, 85], 0));
     setIsLoaded(true);
   }, []);
 
+  // PURE function
   const getClustersForView = useCallback(
     (bbox: [number, number, number, number], zoom: number): Cluster[] => {
       if (!clusterRef.current || !isLoaded) return [];
-
-      const result = clusterRef.current.getClusters(bbox, zoom);
-      setClusters(result);
-      return result;
+      return clusterRef.current.getClusters(bbox, zoom);
     },
     [isLoaded]
   );
 
   const getClusterLeaves = useCallback((clusterId: number): Station[] => {
     if (!clusterRef.current) return [];
-
     return clusterRef.current
       .getClusterLeaves(clusterId)
       .map(p => stationsMapRef.current.get(p.id))
       .filter((s): s is Station => Boolean(s));
   }, []);
 
-  const getExpansionZoom = useCallback((clusterId: number): number => {
-    return clusterRef.current?.getClusterExpansionZoom(clusterId) ?? 16;
-  }, []);
+  const getExpansionZoom = useCallback(
+    (clusterId: number): number =>
+      clusterRef.current?.getClusterExpansionZoom(clusterId) ?? 16,
+    []
+  );
 
   const clear = useCallback(() => {
     clusterRef.current?.clear();

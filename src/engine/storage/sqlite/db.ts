@@ -1,6 +1,9 @@
 // Engine - SQLite WASM Database Manager
 import { logger } from '../../core/logger';
 
+import sqlite3InitModule from "@sqlite.org/sqlite-wasm";
+import sqliteWasmBinary from "@sqlite.org/sqlite-wasm/sqlite3.wasm?arraybuffer";
+
 export type SqliteDatabase = {
   exec: (sql: string, params?: unknown[]) => void;
   selectObjects: <T>(sql: string, params?: unknown[]) => T[];
@@ -51,7 +54,6 @@ async function detectOPFS(): Promise<boolean> {
       return false;
     }
     const root = await navigator.storage.getDirectory();
-    // Try to create a test file
     const testHandle = await root.getFileHandle('__opfs_test__', { create: true });
     await root.removeEntry('__opfs_test__');
     return true;
@@ -61,16 +63,20 @@ async function detectOPFS(): Promise<boolean> {
   }
 }
 
+/**
+ * ✅ IMPORTANT:
+ * - On n’utilise PAS locateFile (ça déclenche un fetch .wasm et retombe sur le problème MIME).
+ * - On fournit le binaire directement via `wasmBinary` (import Vite ?arraybuffer).
+ */
+let sqlitePromise: Promise<SqliteWasmModule> | null = null;
+
 async function loadSqliteWasm(): Promise<SqliteWasmModule> {
-  try {
-    // Dynamic import for code splitting
-    const sqlite3InitModule = await import('@sqlite.org/sqlite-wasm');
-    const sqlite3 = await sqlite3InitModule.default();
-    return sqlite3 as SqliteWasmModule;
-  } catch (error) {
-    logger.error('Storage', 'Failed to load SQLite WASM:', error);
-    throw error;
+  if (!sqlitePromise) {
+    sqlitePromise = sqlite3InitModule({
+      wasmBinary: sqliteWasmBinary,
+    }) as Promise<SqliteWasmModule>;
   }
+  return sqlitePromise;
 }
 
 export async function initDatabase(): Promise<SqliteDatabase> {
@@ -101,7 +107,6 @@ export async function initDatabase(): Promise<SqliteDatabase> {
     state.mode = 'memory';
   }
 
-  // Wrap the native DB with our interface
   const wrappedDb: SqliteDatabase = {
     exec: (sql: string, params?: unknown[]) => {
       if (params && params.length > 0) {
@@ -117,7 +122,7 @@ export async function initDatabase(): Promise<SqliteDatabase> {
         rowMode: 'object',
         callback: (row: T) => {
           result.push(row);
-          return undefined; // Continue iteration
+          return undefined;
         },
       };
       if (params && params.length > 0) {
@@ -133,7 +138,7 @@ export async function initDatabase(): Promise<SqliteDatabase> {
         rowMode: 'array',
         callback: (row: unknown[]) => {
           value = row[0];
-          return false; // Stop after first row
+          return false;
         },
       };
       if (params && params.length > 0) {
@@ -177,7 +182,7 @@ export async function closeDatabase(): Promise<void> {
 
 export async function deleteDatabase(): Promise<void> {
   await closeDatabase();
-  
+
   if (state.mode === 'opfs') {
     try {
       const root = await navigator.storage.getDirectory();
@@ -205,9 +210,9 @@ export async function vacuumDatabase(): Promise<void> {
 
   logger.info('Storage', 'Running VACUUM...');
   const startTime = performance.now();
-  
+
   db.exec('VACUUM');
-  
+
   const duration = Math.round(performance.now() - startTime);
   logger.info('Storage', `VACUUM completed in ${duration}ms`);
 }
@@ -223,7 +228,7 @@ export async function checkIntegrity(): Promise<{ ok: boolean; errors: string[] 
   }
 
   logger.info('Storage', 'Running integrity check...');
-  
+
   const results = db.selectObjects<{ integrity_check: string }>(
     'PRAGMA integrity_check'
   );
@@ -259,9 +264,9 @@ export async function analyzeDatabase(): Promise<void> {
 
   logger.info('Storage', 'Running ANALYZE...');
   const startTime = performance.now();
-  
+
   db.exec('ANALYZE');
-  
+
   const duration = Math.round(performance.now() - startTime);
   logger.info('Storage', `ANALYZE completed in ${duration}ms`);
 }
@@ -284,8 +289,7 @@ export async function getDatabaseStats(): Promise<{
   const pageSize = db.selectValue('PRAGMA page_size') as number;
   const sizeBytes = pageCount * pageSize;
 
-  // Count rows in main tables
-  const tableNames = ['stations', 'favorites', 'play_history', 'settings'];
+  const tableNames = ['stations', 'favorites', 'play_history', 'settings', 'ai_signals'];
   const tables: { name: string; rowCount: number }[] = [];
 
   for (const name of tableNames) {
@@ -293,7 +297,6 @@ export async function getDatabaseStats(): Promise<{
       const count = db.selectValue(`SELECT COUNT(*) FROM ${name}`) as number;
       tables.push({ name, rowCount: count });
     } catch {
-      // Table might not exist yet
       tables.push({ name, rowCount: 0 });
     }
   }

@@ -325,12 +325,29 @@ export class SqliteStationRepository implements IStationRepository {
   }
 }
 
-// Singleton instance
+// Singleton instance logic with async initialization support
 let sqliteRepo: SqliteStationRepository | null = null;
+let initializing: Promise<SqliteStationRepository> | null = null;
+
+export async function initSqliteRepository(): Promise<SqliteStationRepository> {
+  if (sqliteRepo) return sqliteRepo;
+
+  if (!initializing) {
+    initializing = (async () => {
+      const repo = new SqliteStationRepository();
+      // Force initialization
+      repo['getDb']();
+      return repo;
+    })();
+  }
+
+  sqliteRepo = await initializing;
+  return sqliteRepo;
+}
 
 export function getSqliteRepository(): SqliteStationRepository {
   if (!sqliteRepo) {
-    sqliteRepo = new SqliteStationRepository();
+    throw new Error('SQLite repository not initialized. Call initSqliteRepository() first.');
   }
   return sqliteRepo;
 }

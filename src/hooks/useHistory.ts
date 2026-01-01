@@ -4,6 +4,8 @@ import { getSqliteRepository } from '@/engine/storage/sqlite/stationRepository';
 import { aiEngine } from '@/engine/radio/ai';
 import type { Station } from '@/engine/types';
 
+let historyInitialized = false; // GLOBAL, partagé
+
 export function useHistory() {
   const {
     history,
@@ -12,13 +14,11 @@ export function useHistory() {
     clearHistory: storeClearHistory,
   } = useRadioStore();
 
-  const isInitialized = useRef(false);
   const pendingAdds = useRef<Set<string>>(new Set());
 
-  // Load history once
   useEffect(() => {
-    if (isInitialized.current) return;
-    isInitialized.current = true;
+    if (historyInitialized) return;
+    historyInitialized = true;
 
     const loadHistory = async () => {
       try {
@@ -43,8 +43,8 @@ export function useHistory() {
   const recordPlay = useCallback(
     async (station: Station, durationSeconds?: number) => {
       const key = station.id;
-
       if (pendingAdds.current.has(key)) return;
+
       pendingAdds.current.add(key);
 
       try {
