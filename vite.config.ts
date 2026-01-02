@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, type ViteDevServer } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
@@ -27,7 +27,7 @@ export default defineConfig(({ mode }) => ({
     // -------------------------------------------------------------------
     {
       name: "wasm-mime-fix",
-      configureServer(server) {
+      configureServer(server: ViteDevServer) {
         server.middlewares.use((req, res, next) => {
           // Si l'URL demande un fichier .wasm
           if (req.url?.endsWith(".wasm")) {

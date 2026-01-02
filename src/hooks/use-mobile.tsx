@@ -19,21 +19,10 @@ export function useIsMobile(): boolean {
       setIsMobile(event.matches);
     };
 
-    // Support anciens navigateurs
-    if (media.addEventListener) {
-      media.addEventListener("change", listener);
-    } else {
-      // @ts-expect-error - legacy Safari support
-      media.addListener(listener);
-    }
+    media.addEventListener("change", listener);
 
     return () => {
-      if (media.removeEventListener) {
-        media.removeEventListener("change", listener);
-      } else {
-        // @ts-expect-error - legacy Safari support
-        media.removeListener(listener);
-      }
+      media.removeEventListener("change", listener);
     };
   }, []);
 

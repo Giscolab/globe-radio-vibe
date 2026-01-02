@@ -23,7 +23,7 @@ class FFTSmoother {
   /**
    * Process raw FFT data and return smoothed, downsampled bands
    */
-  process(fftData: Uint8Array): SmoothedFFT {
+  process(fftData: Uint8Array<ArrayBufferLike>): SmoothedFFT {
     const inputLength = fftData.length;
     const bandsPerGroup = Math.floor(inputLength / this.bandCount);
     const bands = new Float32Array(this.bandCount);

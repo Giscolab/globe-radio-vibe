@@ -1,9 +1,27 @@
-// AI Search Service - Client-side interface for AI-powered search
+// ============================================================================
+// AI Search Service - Client-side interface for Supabase AI-powered search
+// ============================================================================
+// Responsabilités:
+// - Interface vers les edge functions de recherche sémantique
+// - Pas de logique de scoring (délégué au serveur ou aiEngine)
+// - Gestion robuste des erreurs et retours vides
+// ============================================================================
+
 import { supabase } from '@/integrations/supabase/client';
 import type { Station, EnrichedStation } from '@/engine/types';
 import { buildAIDescriptors } from '@/engine/radio/enrichment/aiDescriptor';
 
-export type AmbienceType = 'chill' | 'focus' | 'energetic' | 'relax' | 'night' | 'party' | 'acoustic' | 'vocal';
+// ============= Types =============
+
+export type AmbienceType =
+  | 'chill'
+  | 'focus'
+  | 'energetic'
+  | 'relax'
+  | 'night'
+  | 'party'
+  | 'acoustic'
+  | 'vocal';
 
 interface SearchResult {
   id: string;
@@ -23,22 +41,48 @@ interface SyncResponse {
   error?: string;
 }
 
+// ============= Ambience Query Mapping =============
+
+const AMBIENCE_QUERIES: Record<AmbienceType, string> = {
+  chill: 'chill relaxing calm smooth easy listening lounge downtempo',
+  focus: 'focus ambient instrumental electronic minimal concentration study',
+  energetic: 'energetic upbeat dance electronic house techno edm',
+  relax: 'relaxing peaceful calm acoustic soft gentle soothing',
+  night: 'night dark ambient electronic chill downtempo late',
+  party: 'party dance club house edm electronic pop upbeat',
+  acoustic: 'acoustic folk singer-songwriter unplugged live stripped',
+  vocal: 'vocal jazz soul r&b pop singer crooner smooth',
+};
+
+// ============= Utils =============
+
+function mapResultsToStations(results: SearchResult[], stations: Station[]): Station[] {
+  const stationMap = new Map(stations.map((s) => [s.id, s]));
+  return results
+    .map((r) => stationMap.get(r.id))
+    .filter((s): s is Station => s !== undefined);
+}
+
+// ============= Public API =============
+
 /**
- * Search stations by natural language query
+ * Search stations by natural language query using semantic search
  */
 export async function searchByText(
   query: string,
   stations: Station[],
   limit = 20
 ): Promise<Station[]> {
+  if (!query.trim()) return [];
+
   try {
     const { data, error } = await supabase.functions.invoke<SearchResponse>('search-stations', {
-      body: { query, limit }
+      body: { query, limit },
     });
 
     if (error) {
       console.error('[searchAI] Function error:', error);
-      throw error;
+      return [];
     }
 
     if (data?.error) {
@@ -46,39 +90,35 @@ export async function searchByText(
       return [];
     }
 
-    if (!data?.results || data.results.length === 0) {
-      console.log('[searchAI] No results found');
+    if (!data?.results?.length) {
       return [];
     }
 
-    // Map results back to stations
-    const stationMap = new Map(stations.map(s => [s.id, s]));
-    return data.results
-      .map(r => stationMap.get(r.id))
-      .filter((s): s is Station => s !== undefined);
-
-  } catch (error) {
-    console.error('[searchAI] Error:', error);
+    return mapResultsToStations(data.results, stations);
+  } catch (err) {
+    console.error('[searchAI] Unexpected error:', err);
     return [];
   }
 }
 
 /**
- * Find stations similar to a given station
+ * Find stations similar to a given station using embeddings
  */
 export async function searchSimilarStations(
   stationId: string,
   stations: Station[],
   limit = 10
 ): Promise<Station[]> {
+  if (!stationId) return [];
+
   try {
     const { data, error } = await supabase.functions.invoke<SearchResponse>('similar-stations', {
-      body: { stationId, limit }
+      body: { stationId, limit },
     });
 
     if (error) {
       console.error('[searchAI] Similar function error:', error);
-      throw error;
+      return [];
     }
 
     if (data?.error) {
@@ -86,25 +126,20 @@ export async function searchSimilarStations(
       return [];
     }
 
-    if (!data?.results || data.results.length === 0) {
-      console.log('[searchAI] No similar stations found');
+    if (!data?.results?.length) {
       return [];
     }
 
-    // Map results back to stations
-    const stationMap = new Map(stations.map(s => [s.id, s]));
-    return data.results
-      .map(r => stationMap.get(r.id))
-      .filter((s): s is Station => s !== undefined);
-
-  } catch (error) {
-    console.error('[searchAI] Similar error:', error);
+    return mapResultsToStations(data.results, stations);
+  } catch (err) {
+    console.error('[searchAI] Similar unexpected error:', err);
     return [];
   }
 }
 
 /**
  * Get recommendations based on listening history and favorites
+ * This is a lightweight fallback when aiEngine.recommend() is not suitable
  */
 export async function getRecommendations(
   recentHistory: Station[],
@@ -112,92 +147,80 @@ export async function getRecommendations(
   allStations: Station[],
   limit = 10
 ): Promise<Station[]> {
-  // Build a query from user preferences
   const preferredGenres = new Set<string>();
   const preferredCountries = new Set<string>();
-  
-  [...recentHistory.slice(0, 5), ...favorites.slice(0, 5)].forEach(station => {
+
+  // Extract preferences from recent history and favorites
+  const sources = [...recentHistory.slice(0, 5), ...favorites.slice(0, 5)];
+  for (const station of sources) {
     if (station.genre) preferredGenres.add(station.genre);
     if (station.country) preferredCountries.add(station.country);
-    station.tags?.slice(0, 3).forEach(tag => preferredGenres.add(tag));
-  });
-  
+    station.tags?.slice(0, 3).forEach((tag) => preferredGenres.add(tag));
+  }
+
+  // Fallback to popular stations if no preferences
   if (preferredGenres.size === 0 && preferredCountries.size === 0) {
-    // No preferences yet, return popular stations
     return allStations
-      .filter(s => s.votes && s.votes > 10)
-      .sort((a, b) => (b.votes || 0) - (a.votes || 0))
+      .filter((s) => s.votes && s.votes > 10)
+      .sort((a, b) => (b.votes ?? 0) - (a.votes ?? 0))
       .slice(0, limit);
   }
-  
-  const query = [
+
+  // Build query from preferences
+  const queryParts = [
     ...Array.from(preferredGenres).slice(0, 5),
-    ...Array.from(preferredCountries).slice(0, 2)
-  ].join(' ');
-  
-  return searchByText(query, allStations, limit);
+    ...Array.from(preferredCountries).slice(0, 2),
+  ];
+
+  return searchByText(queryParts.join(' '), allStations, limit);
 }
 
 /**
- * Search by ambience/mood
+ * Search by ambience/mood using predefined query mappings
  */
 export async function searchByAmbience(
   ambience: AmbienceType,
   stations: Station[],
   genre?: string
 ): Promise<Station[]> {
-  const ambienceQueries: Record<AmbienceType, string> = {
-    chill: 'chill relaxing calm smooth easy listening lounge',
-    focus: 'focus ambient instrumental electronic minimal concentration',
-    energetic: 'energetic upbeat dance electronic house techno',
-    relax: 'relaxing peaceful calm acoustic soft gentle',
-    night: 'night dark ambient electronic chill downtempo',
-    party: 'party dance club house edm electronic pop',
-    acoustic: 'acoustic folk singer-songwriter unplugged live',
-    vocal: 'vocal jazz soul r&b pop singer crooner'
-  };
-  
-  let query = ambienceQueries[ambience] || ambience;
-  if (genre) {
-    query = `${genre} ${query}`;
-  }
-  
+  const baseQuery = AMBIENCE_QUERIES[ambience] ?? ambience;
+  const query = genre ? `${genre} ${baseQuery}` : baseQuery;
+
   return searchByText(query, stations, 20);
 }
 
 /**
- * Sync station embeddings to the database
+ * Sync station embeddings to the database (batch operation)
  */
 export async function syncEmbeddings(stations: EnrichedStation[]): Promise<boolean> {
+  if (!stations.length) return true;
+
   try {
     const descriptors = buildAIDescriptors(stations);
-    
-    // Sync in batches
     const BATCH_SIZE = 200;
     let totalSynced = 0;
-    
+
     for (let i = 0; i < descriptors.length; i += BATCH_SIZE) {
       const batch = descriptors.slice(i, i + BATCH_SIZE);
-      
+
       const { data, error } = await supabase.functions.invoke<SyncResponse>('sync-embeddings', {
-        body: { stations: batch }
+        body: { stations: batch },
       });
-      
+
       if (error) {
         console.error('[searchAI] Sync batch error:', error);
         continue;
       }
-      
+
       if (data?.synced) {
         totalSynced += data.synced;
       }
     }
-    
+
     console.log(`[searchAI] Synced ${totalSynced} station embeddings`);
     return true;
-    
-  } catch (error) {
-    console.error('[searchAI] Sync error:', error);
+  } catch (err) {
+    console.error('[searchAI] Sync unexpected error:', err);
     return false;
   }
 }

@@ -29,14 +29,14 @@ class AudioAnalyzer {
   private source: MediaElementAudioSourceNode | null = null;
   private connectedElement: HTMLAudioElement | null = null;
   
-  // Analysis data - use explicit ArrayBuffer type
-  private fftData: Uint8Array;
-  private timeDomainData: Uint8Array;
+  // Analysis data buffers
+  private fftData: Uint8Array<ArrayBuffer>;
+  private timeDomainData: Uint8Array<ArrayBuffer>;
   
   constructor() {
-    // Pre-allocate with explicit ArrayBuffer
-    this.fftData = new Uint8Array(new ArrayBuffer(FFT_SIZE / 2));
-    this.timeDomainData = new Uint8Array(new ArrayBuffer(FFT_SIZE / 2));
+    // Pre-allocate typed arrays
+    this.fftData = new Uint8Array(FFT_SIZE / 2);
+    this.timeDomainData = new Uint8Array(FFT_SIZE / 2);
   }
   
   // Peak detection state
