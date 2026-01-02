@@ -10,7 +10,6 @@ import { GenrePills } from './GenrePills';
 import { HealthDot } from './StationHealthBadge';
 import { useRadioStore } from '@/stores/radio';
 import { checkStationHealth } from '@/engine/radio/health/healthChecker';
-import { shallow } from 'zustand/shallow';
 
 interface StationListProps {
   stations: Station[];
@@ -19,14 +18,9 @@ interface StationListProps {
 
 export function StationList({ stations, isLoading }: StationListProps) {
   const { currentStation, status, play, toggle } = usePlayer();
-  const { setSelectedGenre, stationHealth, setStationHealth } = useRadioStore(
-    (state) => ({
-      setSelectedGenre: state.setSelectedGenre,
-      stationHealth: state.stationHealth,
-      setStationHealth: state.setStationHealth,
-    }),
-    shallow
-  );
+  const setSelectedGenre = useRadioStore((state) => state.setSelectedGenre);
+  const stationHealth = useRadioStore((state) => state.stationHealth);
+  const setStationHealth = useRadioStore((state) => state.setStationHealth);
   const enrichedStations = useEnrichedStationsSync(stations);
   const [testingIds, setTestingIds] = useState<Set<string>>(new Set());
   const [brokenFavicons, setBrokenFavicons] = useState<Set<string>>(new Set());

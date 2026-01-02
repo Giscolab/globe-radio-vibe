@@ -11,7 +11,7 @@ import { enrichStationSync } from '@/engine/radio/enrichment/stationEnricher';
 import { getHealthTier } from '@/engine/radio/health';
 import { needsProxy, isForceProxyEnabled } from '@/engine/radio/utils/httpsUpgrade';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { shallow } from 'zustand/shallow';
+
 
 export function PlayerBar() {
   const { 
@@ -28,10 +28,7 @@ export function PlayerBar() {
     totalCandidates
   } = usePlayer();
   
-  const { stationHealth } = useRadioStore(
-    (state) => ({ stationHealth: state.stationHealth }),
-    shallow
-  );
+  const stationHealth = useRadioStore((state) => state.stationHealth);
   const { safeAudioMode } = useSettingsStore();
   
   const isPlaying = status === 'playing';

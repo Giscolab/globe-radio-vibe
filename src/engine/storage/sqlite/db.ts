@@ -2,7 +2,6 @@
 import { logger } from '../../core/logger';
 
 import sqlite3InitModule from "@sqlite.org/sqlite-wasm";
-import sqliteWasmBinary from "@sqlite.org/sqlite-wasm/sqlite3.wasm?arraybuffer";
 
 export type SqliteDatabase = {
   exec: (sql: string, params?: unknown[]) => void;
@@ -72,9 +71,8 @@ let sqlitePromise: Promise<SqliteWasmModule> | null = null;
 
 async function loadSqliteWasm(): Promise<SqliteWasmModule> {
   if (!sqlitePromise) {
-    sqlitePromise = sqlite3InitModule({
-      wasmBinary: sqliteWasmBinary,
-    }) as Promise<SqliteWasmModule>;
+    // Initialize without wasmBinary - let the module load it via locateFile
+    sqlitePromise = sqlite3InitModule() as Promise<SqliteWasmModule>;
   }
   return sqlitePromise;
 }
