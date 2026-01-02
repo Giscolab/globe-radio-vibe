@@ -40,19 +40,56 @@ npm run test
 ## 🏗️ Architecture
 
 ```
+┌─────────────────────────────────────────────────────────────────────┐
+│                           Application                                │
+├─────────────────────────────────────────────────────────────────────┤
+│  Pages              │  Components          │  Hooks                 │
+│  - Index            │  - GlobeCanvas       │  - useStations         │
+│  - NotFound         │  - StationsPanel     │  - useFavorites        │
+│                     │  - PlayerBar         │  - useHistory          │
+│                     │  - SearchBar         │  - usePlayer           │
+│                     │  - FilterPanel       │  - useAudioAnalysis    │
+├─────────────────────────────────────────────────────────────────────┤
+│                          Stores (Zustand)                            │
+│  ┌─────────────┬─────────────┬─────────────┬─────────────┬────────┐ │
+│  │ radio.store │ audio.store │ health.store│ geo.store   │ai.store│ │
+│  │ - stations  │ - analyzer  │ - status    │ - country   │- search│ │
+│  │ - playback  │ - frequency │ - history   │ - globe     │- reco  │ │
+│  │ - favorites │ - peaks     │ - monitor   │ - zoom      │- cache │ │
+│  └─────────────┴─────────────┴─────────────┴─────────────┴────────┘ │
+│  settings.store (proxy, safeAudioMode) — persisté avec migration    │
+├─────────────────────────────────────────────────────────────────────┤
+│                            Engine                                    │
+├───────────┬───────────┬───────────┬───────────┬───────────┬─────────┤
+│   Core    │    Geo    │   Radio   │  Player   │  Storage  │  Audio  │
+│ - logger  │ - proj    │ - service │ - audio   │ - sqlite  │ - FFT   │
+│ - math    │ - cluster │ - repo    │ - retry   │ - export  │ - peaks │
+│ - errors  │ - country │ - AI      │ - metrics │ - import  │ - smooth│
+│ - throttle│ - topo    │ - health  │           │ - migrate │         │
+└───────────┴───────────┴───────────┴───────────┴───────────┴─────────┘
+```
+
+### Structure détaillée
+
+```
 src/
 ├── engine/              # Logique métier (TypeScript pur, sans React)
-│   ├── core/            # Utilitaires (logger, math, errors)
+│   ├── core/            # Utilitaires (logger, math, errors, throttle)
+│   ├── audio/           # Analyse audio (FFT, détection de pics, lissage)
 │   ├── geo/             # Géographie
 │   │   ├── clustering/  # Supercluster pour 50k+ stations
 │   │   ├── country/     # Index pays, point-in-polygon
 │   │   ├── projection/  # Conversion lon/lat → 3D
 │   │   └── topo/        # Chargement TopoJSON/GeoJSON
+│   ├── media/           # Extraction couleurs, cache favicons
 │   ├── player/          # Moteur audio
 │   │   ├── audioEngine  # Wrapper Howler.js
 │   │   ├── retryPolicy  # Retry exponentiel
 │   │   └── metrics      # Statistiques d'écoute
 │   ├── radio/           # Service stations
+│   │   ├── ai/          # Moteur IA (scoring, recherche, recommandations)
+│   │   ├── health/      # Monitoring santé stations
+│   │   ├── enrichment/  # Mapping genres, badges qualité
 │   │   ├── sources/     # RadioBrowser API
 │   │   └── repository/  # Cache et validation
 │   ├── storage/         # Persistance
@@ -60,40 +97,48 @@ src/
 │   │   └── export/      # Import/Export .db
 │   └── types/           # Types partagés
 ├── components/          # Composants React
+│   ├── ui/              # Primitives shadcn/ui
 │   ├── GlobeCanvas      # Canvas Three.js
 │   ├── StationsPanel    # Panel latéral avec tabs
 │   ├── PlayerBar        # Barre de lecture
 │   ├── StationsLayer    # Points stations (InstancedMesh)
 │   ├── ClusterMarker    # Marqueurs clusters
-│   ├── FavoritesPanel   # Liste des favoris
-│   ├── HistoryPanel     # Historique d'écoute
-│   ├── SearchBar        # Barre de recherche
-│   └── FilterPanel      # Filtres genre/bitrate
+│   ├── AudioVisualizer  # Visualisation audio temps réel
+│   └── ...
 ├── hooks/               # Hooks personnalisés
 │   ├── useStations      # Chargement stations par pays
 │   ├── useFavorites     # Gestion favoris + SQLite
 │   ├── useHistory       # Gestion historique + SQLite
+│   ├── usePlayer        # Contrôle lecteur audio
+│   ├── useAudioAnalysis # Analyse FFT temps réel
 │   ├── useClusteredStations  # Clustering dynamique
 │   └── useStationSearch # Recherche + filtres
-├── stores/              # État global (Zustand)
-│   ├── radio.store      # Stations, playback, favoris
-│   └── geo.store        # Pays sélectionné, état globe
+├── stores/              # État global (Zustand avec subscribeWithSelector)
+│   ├── radio/           # Stations, playback, favoris, historique
+│   ├── ai.store         # Recherche IA, cache immuable, sync embeddings
+│   ├── audio.store      # Analyse audio, fréquences, pics
+│   ├── geo.store        # Pays sélectionné, état globe
+│   ├── health.store     # Statut santé stations
+│   └── settings.store   # Préférences utilisateur (persisté)
 └── pages/               # Pages de l'application
 ```
 
 ### Principes architecturaux
 
-1. **Séparation Engine/App** - L'engine est en TypeScript pur sans dépendance React
-2. **Local-first** - SQLite WASM avec OPFS pour persistance durable
-3. **Performance** - InstancedMesh pour 50k+ stations, supercluster pour clustering
-4. **Design System** - Neumorphisme cohérent via CSS variables
+1. **Séparation Engine/App** — L'engine est en TypeScript pur sans dépendance React
+2. **Local-first** — SQLite WASM avec OPFS pour persistance durable
+3. **Performance** — InstancedMesh pour 50k+ stations, supercluster pour clustering
+4. **État immuable** — Tous les stores Zustand utilisent `subscribeWithSelector` et patterns immuables
+5. **Scoring IA multicritère** — Santé, préférence, contexte, récence, diversité
 
 ### Flux de données
 
 ```
-RadioBrowser API → StationService → SQLite → Zustand Store → React Components
+RadioBrowser API → StationService → SQLite → Zustand Stores → React Components
        ↑                                           ↓
    Validation Zod                           Three.js Globe
+                    ↓
+         Supabase Edge Functions (recherche IA, embeddings)
 ```
 
 ## 🛠️ Technologies
@@ -196,21 +241,41 @@ CREATE TABLE play_history (
   duration_seconds INTEGER DEFAULT 0
 );
 
--- Signaux IA
+-- Signaux IA (préférences utilisateur)
 CREATE TABLE ai_signals (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   station_id TEXT NOT NULL,
-  type TEXT NOT NULL,
+  type TEXT NOT NULL,        -- 'play', 'skip', 'favorite', etc.
   duration_seconds INTEGER DEFAULT 0,
-  details TEXT,
+  details TEXT,              -- JSON métadonnées
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
--- Paramètres
+-- Paramètres utilisateur
 CREATE TABLE settings (
   key TEXT PRIMARY KEY,
   value TEXT
 );
+```
+
+## 🧠 Moteur IA
+
+Le moteur IA fournit des recommandations intelligentes avec :
+
+- **Scoring multicritère** — Santé, préférences utilisateur, contexte, récence, diversité
+- **Inférence d'intention** — Détecte l'intention utilisateur depuis des requêtes naturelles
+- **Signaux contextuels** — Heure du jour, historique d'écoute, préférences de genre
+- **Cache TTL** — Cache avec expiration et éviction LRU
+
+```typescript
+// Poids de scoring (configurables)
+const weights = {
+  health: 0.25,      // Fiabilité de la station
+  preference: 0.30,  // Correspondance goûts utilisateur
+  context: 0.20,     // Pertinence contextuelle
+  recency: 0.15,     // Pénalité de fraîcheur
+  diversity: 0.10,   // Bonus de variété
+};
 ```
 
 ### Export/Import
