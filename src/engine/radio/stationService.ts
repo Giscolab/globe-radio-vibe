@@ -1,4 +1,5 @@
 // Engine - Station Service via Edge Function Proxy
+import { supabase } from "../../integrations/supabase/client";
 import { Station, type RadioBrowserStation } from "../types/radio";
 import { logger } from "../core/logger";
 import { initSqliteRepository } from "../storage/sqlite/stationRepository";
@@ -85,27 +86,35 @@ function isRadioBrowserStation(value: unknown): value is RadioBrowserStation {
 
 async function callRadioProxy(params: Record<string, string>): Promise<RadioBrowserStation[] | null> {
   const searchParams = new URLSearchParams(params);
-  
+
   const projectUrl = import.meta.env.VITE_SUPABASE_URL;
   const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-  
+
   if (!projectUrl || !anonKey) {
     logger.error("StationService", "Missing Supabase config");
     return null;
   }
-  
+
+  // 🔥 Récupération du JWT utilisateur
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+
+  if (!token) {
+    logger.error("StationService", "No user session available");
+    return null;
+  }
+
   const url = `${projectUrl}/functions/v1/radio-proxy?${searchParams.toString()}`;
-  
+
   logger.debug("StationService", `Calling proxy: ${url}`);
-  
+
   try {
     const response = await fetch(url, {
-      mode: 'cors',
-      credentials: 'omit',
+      mode: "cors",
+      credentials: "omit",
       headers: {
-        'Authorization': `Bearer ${anonKey}`,
-        'apikey': anonKey,
-        'Accept': 'application/json',
+        "Authorization": `Bearer ${token}`, // 🔥 obligatoire dans TON projet
+        "Accept": "application/json",
       },
     });
 
@@ -116,12 +125,12 @@ async function callRadioProxy(params: Record<string, string>): Promise<RadioBrow
     }
 
     const result = await response.json();
-    
+
     if (result.error) {
       logger.error("StationService", `Proxy error: ${result.error}`);
       return null;
     }
-    
+
     if (!Array.isArray(result)) return [];
 
     return result.filter(isRadioBrowserStation);

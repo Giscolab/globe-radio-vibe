@@ -1,40 +1,20 @@
-// supabase/functions/radio-proxy/index.ts
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Max-Age": "86400",
 };
 
-const BASE_URL = "https://all.api.radio-browser.info";
-
-async function fetchWithRetry(path: string, retries = 3): Promise<Response> {
-  const url = `${BASE_URL}${path}`;
-  
-  for (let i = 0; i < retries; i++) {
-    console.log(`[radio-proxy] Attempt ${i + 1}: ${url}`);
-    try {
-      const response = await fetch(url, {
-        headers: { "User-Agent": "RadioGlobe/1.0" },
-      });
-      if (response.ok) {
-        return response;
-      }
-      console.log(`[radio-proxy] HTTP ${response.status} on attempt ${i + 1}`);
-    } catch (e) {
-      const errMsg = e instanceof Error ? e.message : String(e);
-      console.log(`[radio-proxy] Fetch error on attempt ${i + 1}:`, errMsg);
-    }
-  }
-  throw new Error(`Failed after ${retries} attempts`);
-}
-
 serve(async (req) => {
+  // --- CORS PRE-FLIGHT ---
   if (req.method === "OPTIONS") {
-    return new Response(null, {
-      status: 204,
-      headers: corsHeaders,
+    return new Response("ok", {
+      status: 200,
+      headers: {
+        ...corsHeaders,
+      },
     });
   }
 
@@ -57,7 +37,6 @@ serve(async (req) => {
             headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
         }
-        // Use search endpoint with countrycode filter for reliability
         apiPath = `/json/stations/search?countrycode=${countryCode}&limit=${limit}&offset=${offset}&hidebroken=true&order=clickcount&reverse=true`;
         break;
 
@@ -99,24 +78,27 @@ serve(async (req) => {
         apiPath = `/json/stations/topclick/100`;
     }
 
-    console.log(`[radio-proxy] Fetching: ${apiPath}`);
-    const response = await fetchWithRetry(apiPath);
-    const stations = await response.json();
-    console.log(`[radio-proxy] Success: ${stations.length} stations`);
+    const upstream = await fetch(`https://all.api.radio-browser.info${apiPath}`, {
+      headers: { "User-Agent": "RadioGlobe/1.0" },
+    });
 
-    return new Response(JSON.stringify(stations), {
+    const data = await upstream.json();
+
+    return new Response(JSON.stringify(data), {
+      status: 200,
       headers: {
         ...corsHeaders,
         "Content-Type": "application/json",
         "Cache-Control": "public, max-age=300",
       },
     });
-  } catch (e) {
-    const errMsg = e instanceof Error ? e.message : "Proxy error";
-    console.error("[radio-proxy] Error:", errMsg);
-    return new Response(JSON.stringify({ error: errMsg }), {
+  } catch (err) {
+    return new Response(JSON.stringify({ error: String(err) }), {
       status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: {
+        ...corsHeaders,
+        "Content-Type": "application/json",
+      },
     });
   }
 });

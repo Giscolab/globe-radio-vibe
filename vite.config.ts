@@ -9,48 +9,21 @@ export default defineConfig(({ mode }) => ({
     port: 8080,
     headers: {
       "Cross-Origin-Opener-Policy": "same-origin",
-      "Cross-Origin-Embedder-Policy": "require-corp",
+      "Cross-Origin-Embedder-Policy": "require-corp"
     },
     mimeTypes: {
-      "application/wasm": ["wasm"],
-    },
+      "application/wasm": ["wasm"]
+    }
   },
-<<<<<<< HEAD
-  plugins: [
-    react(),
-    mode === "development" && componentTagger(),
-    // -------------------------------------------------------------------
-    // 🔥 FIX : Force le Content-Type 'application/wasm' pour le serveur de développement
-    // Sans cela, le navigateur refuse de compiler le module SQLite.
-    // -------------------------------------------------------------------
-    {
-      name: "wasm-mime-fix",
-      configureServer(server: ViteDevServer) {
-        server.middlewares.use((req, res, next) => {
-          // Si l'URL demande un fichier .wasm
-          if (req.url?.endsWith(".wasm")) {
-            // On force le bon type MIME
-            res.setHeader("Content-Type", "application/wasm");
-          }
-          next();
-        });
-      },
-    },
-  ].filter(Boolean),
-  resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
-    },
-=======
 
-  // 🔥🔥🔥 CORRECTION CRITIQUE : empêcher Vite de bundler SQLite WASM
+  // Empêche Vite de bundler SQLite WASM
   optimizeDeps: {
-    exclude: ["@sqlite.org/sqlite-wasm"],
->>>>>>> 9eaf89d (Fix: SQLite WASM loading, Vite config, and DB initialization)
+    exclude: ["@sqlite.org/sqlite-wasm"]
   },
+
   build: {
     commonjsOptions: {
-      exclude: ["@sqlite.org/sqlite-wasm"],
+      exclude: ["@sqlite.org/sqlite-wasm"]
     },
     sourcemap: true,
     rollupOptions: {
@@ -63,11 +36,11 @@ export default defineConfig(({ mode }) => ({
             "@radix-ui/react-dialog",
             "@radix-ui/react-popover",
             "@radix-ui/react-tabs",
-            "@radix-ui/react-scroll-area",
-          ],
-        },
-      },
-    },
+            "@radix-ui/react-scroll-area"
+          ]
+        }
+      }
+    }
   },
 
   plugins: [
@@ -75,22 +48,22 @@ export default defineConfig(({ mode }) => ({
     mode === "development" && componentTagger(),
     {
       name: "wasm-mime-fix",
-      configureServer(server) {
+      configureServer(server: ViteDevServer) {
         server.middlewares.use((req, res, next) => {
           if (req.url?.endsWith(".wasm")) {
             res.setHeader("Content-Type", "application/wasm");
           }
           next();
         });
-      },
-    },
+      }
+    }
   ].filter(Boolean),
 
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./src"),
-    },
+      "@": path.resolve(__dirname, "./src")
+    }
   },
 
-  assetsInclude: ["**/*.wasm"],
+  assetsInclude: ["**/*.wasm"]
 }));

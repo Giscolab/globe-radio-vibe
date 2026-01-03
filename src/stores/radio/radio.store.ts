@@ -1,4 +1,4 @@
-// Store - Radio State (projection of engine state; never a playback source of truth)
+// src/stores/radio.ts
 import { create } from 'zustand';
 import type { Station } from '@/engine/types';
 import type { StationHealth } from '@/engine/radio/health';
@@ -90,7 +90,6 @@ export const useRadioStore = create<RadioStore>((set, get) => ({
       playedAt: new Date(),
       durationSeconds,
     };
-    // Keep last 100 entries, remove duplicates of same station
     const filtered = history.filter((h) => h.station.id !== station.id);
     const updated = [record, ...filtered].slice(0, 100);
     set({ history: updated });
@@ -107,5 +106,4 @@ export const useRadioStore = create<RadioStore>((set, get) => ({
   getStationHealth: (id) => get().stationHealth[id] || null,
 }));
 
-// Re-export types for convenience
 export type { PlayRecord, RadioState, RadioActions } from './radio.types';

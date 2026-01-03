@@ -2,9 +2,11 @@ import { useQuery } from '@tanstack/react-query';
 import { getStationsByCountry } from '@/engine/radio/stationService';
 import { useRadioStore } from '@/stores/radio';
 import { useEffect, useRef } from 'react';
+import type { Station } from '@/engine/types/radio';   // ← IMPORT CRITIQUE
 
 export function useStations(countryCode: string | null) {
   const { setStations, setLoading } = useRadioStore();
+  const stableStationsRef = useRef<Station[]>([]);
   const initializedRef = useRef(false);
 
   const query = useQuery({
@@ -18,7 +20,6 @@ export function useStations(countryCode: string | null) {
     gcTime: 30 * 60 * 1000,
   });
 
-  // Set loading only for initial load
   useEffect(() => {
     if (!countryCode) return;
 
@@ -32,15 +33,25 @@ export function useStations(countryCode: string | null) {
     }
   }, [countryCode, query.isLoading, query.isSuccess, setLoading]);
 
-  // Sync store only when data actually changes
   useEffect(() => {
-    if (query.data) {
-      setStations(query.data);
-    }
+    const data = query.data;
+
+    // ❌ 1) Pas de données → on ne touche à rien
+    if (!data || data.length === 0) return;
+
+    // ❌ 2) Fallback détecté → on ignore
+    if (data.length <= 3) return;
+
+    // ❌ 3) Si même taille → probablement même liste → ignorer
+    if (stableStationsRef.current.length === data.length) return;
+
+    // ✅ 4) Mise à jour stable
+    stableStationsRef.current = data;
+    setStations(data);
   }, [query.data, setStations]);
 
   return {
-    stations: query.data ?? [],
+    stations: stableStationsRef.current,
     isLoading: query.isLoading,
     isFetching: query.isFetching,
     error: query.error,

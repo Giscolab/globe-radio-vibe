@@ -21,7 +21,7 @@ export function StationList({ stations, isLoading }: StationListProps) {
   const setSelectedGenre = useRadioStore((state) => state.setSelectedGenre);
   const stationHealth = useRadioStore((state) => state.stationHealth);
   const setStationHealth = useRadioStore((state) => state.setStationHealth);
-  const enrichedStations = useEnrichedStationsSync(stations);
+  const enrichedStations = stations;
   const [testingIds, setTestingIds] = useState<Set<string>>(new Set());
   const [brokenFavicons, setBrokenFavicons] = useState<Set<string>>(new Set());
 
