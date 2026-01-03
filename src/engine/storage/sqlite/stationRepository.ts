@@ -144,6 +144,10 @@ export class SqliteStationRepository implements IStationRepository {
     return rows.map(rowToStation);
   }
 
+  getStationsByCountry(countryCode: string): Station[] {
+    return this.getByCountry(countryCode);
+  }
+
   search(query: string): Station[] {
     const pattern = `%${query}%`;
     const rows = this.getDb().selectObjects<StationRow>(
@@ -181,6 +185,52 @@ export class SqliteStationRepository implements IStationRepository {
       db.exec('ROLLBACK');
       logger.error('SqliteRepo', 'Batch upsert failed:', error);
       throw error;
+    }
+  }
+
+  syncStations(stations: Station[]): void {
+    const db = this.getDb();
+    db.exec('BEGIN TRANSACTION');
+    try {
+      for (const station of stations) {
+        const params = stationToParams(station);
+        db.exec(
+          `INSERT INTO stations (
+            id, name, url, url_resolved, homepage, favicon,
+            country, country_code, state, language, language_codes,
+            codec, bitrate, votes, click_count, click_trend,
+            lat, lon, tags, last_check_ok, last_check_time, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+          ON CONFLICT(id) DO UPDATE SET
+            name = excluded.name,
+            url = excluded.url,
+            url_resolved = excluded.url_resolved,
+            homepage = excluded.homepage,
+            favicon = excluded.favicon,
+            country = excluded.country,
+            country_code = excluded.country_code,
+            state = excluded.state,
+            language = excluded.language,
+            language_codes = excluded.language_codes,
+            codec = excluded.codec,
+            bitrate = excluded.bitrate,
+            votes = excluded.votes,
+            click_count = excluded.click_count,
+            click_trend = excluded.click_trend,
+            lat = excluded.lat,
+            lon = excluded.lon,
+            tags = excluded.tags,
+            last_check_ok = excluded.last_check_ok,
+            last_check_time = excluded.last_check_time,
+            updated_at = datetime('now')`,
+          params
+        );
+      }
+      db.exec('COMMIT');
+      logger.info('SqliteRepo', `Synced ${stations.length} stations`);
+    } catch (error) {
+      db.exec('ROLLBACK');
+      logger.error('SqliteRepo', 'Station sync failed:', error);
     }
   }
 
