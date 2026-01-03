@@ -2,12 +2,7 @@
 import { logger } from '../../core/logger';
 
 import sqlite3InitModule from "@sqlite.org/sqlite-wasm";
-<<<<<<< HEAD
-=======
-
-// Charge le WASM depuis /public/sqlite3.wasm
-const wasmBinary = await fetch("/sqlite3.wasm").then(r => r.arrayBuffer());
->>>>>>> 9eaf89d (Fix: SQLite WASM loading, Vite config, and DB initialization)
+import migrationsSql from './migrations.sql?raw';
 
 export type SqliteDatabase = {
   exec: (sql: string, params?: unknown[]) => void;
@@ -61,7 +56,7 @@ async function detectOPFS(): Promise<boolean> {
     await root.removeEntry('__opfs_test__');
     return true;
   } catch (error) {
-    logger.warn('Storage', 'OPFS not available:', error);
+    logger.info('Storage', 'OPFS not available, falling back to memory.');
     return false;
   }
 }
@@ -70,16 +65,8 @@ let sqlitePromise: Promise<SqliteWasmModule> | null = null;
 
 async function loadSqliteWasm(): Promise<SqliteWasmModule> {
   if (!sqlitePromise) {
-<<<<<<< HEAD
     // Initialize without wasmBinary - let the module load it via locateFile
     sqlitePromise = sqlite3InitModule() as Promise<SqliteWasmModule>;
-=======
-sqlitePromise = sqlite3InitModule({
-  wasmBinary,
-  locateFile: () => "/sqlite3.wasm"
-}) as Promise<SqliteWasmModule>;
-
->>>>>>> 9eaf89d (Fix: SQLite WASM loading, Vite config, and DB initialization)
   }
   return sqlitePromise;
 }
@@ -144,11 +131,23 @@ export async function initDatabase(): Promise<SqliteDatabase> {
     close: () => db.close(),
   };
 
+  applyMigrations(wrappedDb);
+
   state.db = wrappedDb;
   state.initialized = true;
 
   logger.info('Storage', `Database initialized (mode: ${state.mode})`);
   return wrappedDb;
+}
+
+function applyMigrations(db: SqliteDatabase): void {
+  try {
+    db.exec(migrationsSql);
+    logger.info('Storage', 'Migrations applied');
+  } catch (error) {
+    logger.error('Storage', 'Failed to apply migrations:', error);
+    throw error;
+  }
 }
 
 export function getDatabase(): SqliteDatabase | null {
