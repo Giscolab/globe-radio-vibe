@@ -1,5 +1,5 @@
 // Component - StationsPanel: side panel with tabs for stations, favorites, history
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Radio, RefreshCw, Heart, History, Sparkles, Globe, PanelRightClose, Settings } from 'lucide-react';
 import { useGeoStore } from '@/stores/geo.store';
 import { useRadioStore } from '@/stores/radio';
@@ -34,10 +34,10 @@ export function StationsPanel({ onClose }: StationsPanelProps) {
   const [activeTab, setActiveTab] = useState<TabId>('stations');
   const [selectedAmbience, setSelectedAmbience] = useState<AmbienceType | null>(null);
   const [hasSynced, setHasSynced] = useState(false);
+  const hasLoadedTopStations = useRef(false);
   
   const { selectedCountry, setSelectedCountry } = useGeoStore();
   const { 
-    stations: storeStations,
     topStations,
     setTopStations,
     isLoadingTop,
@@ -52,7 +52,8 @@ export function StationsPanel({ onClose }: StationsPanelProps) {
 
   // Load top stations when no country is selected
   useEffect(() => {
-    if (topStations.length === 0 && !isLoadingTop) {
+    if (topStations.length === 0 && !isLoadingTop && !hasLoadedTopStations.current) {
+      hasLoadedTopStations.current = true;
       setLoadingTop(true);
       getTopStations(50)
         .then(setTopStations)
@@ -134,7 +135,7 @@ export function StationsPanel({ onClose }: StationsPanelProps) {
   }, [stations, topStations, hasSynced, selectedCountry]);
 
   // Handle ambience selection
-  const handleAmbienceSelect = async (ambience: AmbienceType) => {
+  const handleAmbienceSelect = useCallback(async (ambience: AmbienceType) => {
     const stationsToSearch = selectedCountry ? stations : topStations;
     
     if (selectedAmbience === ambience) {
@@ -156,7 +157,7 @@ export function StationsPanel({ onClose }: StationsPanelProps) {
     } finally {
       setIsAISearching(false);
     }
-  };
+  }, [selectedCountry, selectedAmbience, stations, topStations, setAISearchResults, setIsAISearching]);
 
   // Determine which stations to display
   const currentStations = selectedCountry ? stations : topStations;

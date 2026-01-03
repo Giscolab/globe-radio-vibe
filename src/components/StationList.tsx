@@ -29,25 +29,25 @@ export function StationList({ stations, isLoading }: StationListProps) {
     setBrokenFavicons(prev => new Set(prev).add(stationId));
   }, []);
 
-  const handleTestConnection = async (e: React.MouseEvent, station: Station) => {
+  const handleTestConnection = useCallback(async (e: React.MouseEvent, station: Station) => {
     e.stopPropagation();
 
     if (testingIds.has(station.id)) return;
 
-    setTestingIds(prev => new Set(prev).add(station.id));
+    setTestingIds((prev) => new Set(prev).add(station.id));
 
     try {
       const url = station.urlResolved || station.url;
       const health = await checkStationHealth(url!);
       setStationHealth(station.id, health);
     } finally {
-      setTestingIds(prev => {
+      setTestingIds((prev) => {
         const next = new Set(prev);
         next.delete(station.id);
         return next;
       });
     }
-  };
+  }, [testingIds, setStationHealth]);
 
   if (isLoading) {
     return (
@@ -77,26 +77,26 @@ export function StationList({ stations, isLoading }: StationListProps) {
     );
   }
 
-  const handleGenreClick = (genre: string) => {
+  const handleGenreClick = useCallback((genre: string) => {
     setSelectedGenre(genre);
-  };
+  }, [setSelectedGenre]);
 
-  const handleRowAction = (station: Station) => {
+  const handleRowAction = useCallback((station: Station) => {
     const isActive = currentStation?.id === station.id;
     if (isActive) {
       toggle();
     } else {
       play(station);
     }
-  };
+  }, [currentStation?.id, play, toggle]);
 
-  const handleRowKeyDown = (e: React.KeyboardEvent, station: Station) => {
+  const handleRowKeyDown = useCallback((e: React.KeyboardEvent, station: Station) => {
     // Enter or Space should trigger the same action as click
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       handleRowAction(station);
     }
-  };
+  }, [handleRowAction]);
 
   return (
     <div className="p-4 space-y-2 overflow-y-auto max-h-[calc(100vh-200px)]">

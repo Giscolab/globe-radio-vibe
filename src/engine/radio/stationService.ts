@@ -98,9 +98,12 @@ async function callRadioProxy(params: Record<string, string>): Promise<RadioBrow
   logger.debug("StationService", `Calling proxy: ${url}`);
   
   const response = await fetch(url, {
+    mode: 'cors',
+    credentials: 'omit',
     headers: {
       'Authorization': `Bearer ${anonKey}`,
       'apikey': anonKey,
+      'Accept': 'application/json',
     },
   });
 
