@@ -11,10 +11,12 @@ import { logger, type LogLevel } from "@/engine/core/logger";
 import { usePlaybackSignals } from "@/hooks/usePlaybackSignals";
 import { initSqliteRepository } from "@/engine/storage/sqlite/stationRepository";
 import { initDatabase } from "@/engine/storage/sqlite/db";
+import { PrivateRoute } from "@/components/PrivateRoute";
 
 // Lazy load pages to reduce initial bundle size
 const Index = lazy(() => import("./pages/Index"));
 const NotFound = lazy(() => import("./pages/NotFound"));
+const Login = lazy(() => import("./pages/Login"));
 
 const queryClient = new QueryClient();
 
@@ -113,7 +115,15 @@ const App = () => (
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <Suspense fallback={<div className="h-screen w-screen bg-background" />}>
             <Routes>
-              <Route path="/" element={<Index />} />
+              <Route
+                path="/"
+                element={
+                  <PrivateRoute>
+                    <Index />
+                  </PrivateRoute>
+                }
+              />
+              <Route path="/login" element={<Login />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>
