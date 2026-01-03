@@ -3,6 +3,7 @@ import { logger } from '../../core/logger';
 
 import sqlite3InitModule from "@sqlite.org/sqlite-wasm";
 import migrationsSql from './migrations.sql?raw';
+import seedStations from './seed/stations.json';
 
 export type SqliteDatabase = {
   exec: (sql: string, params?: unknown[]) => void;
@@ -132,6 +133,7 @@ export async function initDatabase(): Promise<SqliteDatabase> {
   };
 
   applyMigrations(wrappedDb);
+  seedIfEmpty(wrappedDb);
 
   state.db = wrappedDb;
   state.initialized = true;
@@ -147,6 +149,80 @@ function applyMigrations(db: SqliteDatabase): void {
   } catch (error) {
     logger.error('Storage', 'Failed to apply migrations:', error);
     throw error;
+  }
+}
+
+type SeedStation = {
+  id: string;
+  name: string;
+  url: string;
+  urlResolved?: string;
+  homepage?: string;
+  favicon?: string;
+  country: string;
+  countryCode: string;
+  state?: string;
+  language?: string;
+  codec?: string;
+  bitrate?: number;
+  votes?: number;
+  clickCount?: number;
+  clickTrend?: number;
+  geo?: { lat: number; lon: number };
+  tags?: string[];
+  lastCheckOk?: boolean;
+  lastCheckTime?: string;
+};
+
+function seedIfEmpty(db: SqliteDatabase): void {
+  const count = Number(db.selectValue('SELECT COUNT(*) FROM stations')) || 0;
+  if (count > 0) return;
+
+  if (!Array.isArray(seedStations) || seedStations.length === 0) {
+    logger.warn('Storage', 'Seed file is empty, skipping seed');
+    return;
+  }
+
+  db.exec('BEGIN TRANSACTION');
+  try {
+    for (const station of seedStations as SeedStation[]) {
+      db.exec(
+        `INSERT INTO stations (
+          id, name, url, url_resolved, homepage, favicon,
+          country, country_code, state, language, language_codes,
+          codec, bitrate, votes, click_count, click_trend,
+          lat, lon, tags, last_check_ok, last_check_time, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+        [
+          station.id,
+          station.name,
+          station.url,
+          station.urlResolved ?? null,
+          station.homepage ?? null,
+          station.favicon ?? null,
+          station.country,
+          station.countryCode,
+          station.state ?? null,
+          station.language ?? null,
+          null,
+          station.codec ?? null,
+          station.bitrate ?? 0,
+          station.votes ?? 0,
+          station.clickCount ?? 0,
+          station.clickTrend ?? 0,
+          station.geo?.lat ?? null,
+          station.geo?.lon ?? null,
+          station.tags?.join(',') ?? null,
+          station.lastCheckOk ? 1 : 0,
+          station.lastCheckTime ?? null,
+        ]
+      );
+    }
+    db.exec('COMMIT');
+    logger.info('Storage', `Seeded ${seedStations.length} stations`);
+  } catch (error) {
+    db.exec('ROLLBACK');
+    logger.error('Storage', 'Failed to seed stations:', error);
   }
 }
 

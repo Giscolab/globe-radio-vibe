@@ -1,6 +1,7 @@
 // Engine - Station Service via Edge Function Proxy
 import { Station, type RadioBrowserStation } from "../types/radio";
 import { logger } from "../core/logger";
+import { initSqliteRepository } from "../storage/sqlite/stationRepository";
 
 // Cache simple en mémoire
 type CacheEntry = {
@@ -82,7 +83,7 @@ function isRadioBrowserStation(value: unknown): value is RadioBrowserStation {
   );
 }
 
-async function callRadioProxy(params: Record<string, string>): Promise<RadioBrowserStation[]> {
+async function callRadioProxy(params: Record<string, string>): Promise<RadioBrowserStation[] | null> {
   const searchParams = new URLSearchParams(params);
   
   const projectUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -90,38 +91,44 @@ async function callRadioProxy(params: Record<string, string>): Promise<RadioBrow
   
   if (!projectUrl || !anonKey) {
     logger.error("StationService", "Missing Supabase config");
-    throw new Error("Missing Supabase configuration");
+    return null;
   }
   
   const url = `${projectUrl}/functions/v1/radio-proxy?${searchParams.toString()}`;
   
   logger.debug("StationService", `Calling proxy: ${url}`);
   
-  const response = await fetch(url, {
-    mode: 'cors',
-    credentials: 'omit',
-    headers: {
-      'Authorization': `Bearer ${anonKey}`,
-      'apikey': anonKey,
-      'Accept': 'application/json',
-    },
-  });
+  try {
+    const response = await fetch(url, {
+      mode: 'cors',
+      credentials: 'omit',
+      headers: {
+        'Authorization': `Bearer ${anonKey}`,
+        'apikey': anonKey,
+        'Accept': 'application/json',
+      },
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    logger.error("StationService", `Proxy error: ${response.status} - ${errorText}`);
-    throw new Error(`Proxy error: ${response.status}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error("StationService", `Proxy error: ${response.status} - ${errorText}`);
+      return null;
+    }
+
+    const result = await response.json();
+    
+    if (result.error) {
+      logger.error("StationService", `Proxy error: ${result.error}`);
+      return null;
+    }
+    
+    if (!Array.isArray(result)) return [];
+
+    return result.filter(isRadioBrowserStation);
+  } catch (error) {
+    logger.error("StationService", `Proxy request failed: ${error}`);
+    return null;
   }
-
-  const result = await response.json();
-  
-  if (result.error) {
-    throw new Error(result.error);
-  }
-  
-  if (!Array.isArray(result)) return [];
-
-  return result.filter(isRadioBrowserStation);
 }
 
 // ----------------------------------
@@ -141,15 +148,27 @@ export async function getStationsByCountry(
     logger.debug("StationService", `Fetching stations for ${countryCode}`);
 
   try {
+    const repository = await initSqliteRepository();
     const result = await callRadioProxy({
       action: 'bycountry',
       countrycode: countryCode.toUpperCase(),
       limit: '100',
     });
 
+    if (result === null) {
+      const localStations = repository.getStationsByCountry(countryCode);
+      logger.warn("StationService", `Proxy unavailable, using ${localStations.length} local stations`);
+      cache.set(key, { timestamp: Date.now(), data: localStations });
+      return localStations;
+    }
+
     const stations = result.map(mapStation);
     
     logger.debug("StationService", `Got ${stations.length} stations for ${countryCode}`);
+
+    if (stations.length > 0) {
+      repository.syncStations(stations);
+    }
 
     cache.set(key, { timestamp: Date.now(), data: stations });
     return stations;
@@ -176,6 +195,8 @@ export async function searchStations(query: string): Promise<Station[]> {
       limit: '100',
     });
 
+    if (result === null) return [];
+
     const stations = result.map(mapStation);
     cache.set(key, { timestamp: Date.now(), data: stations });
 
@@ -201,6 +222,8 @@ export async function getTopStations(limit = 100): Promise<Station[]> {
       action: 'topclick',
       limit: limit.toString(),
     });
+
+    if (result === null) return [];
 
     const stations = result.map(mapStation);
     cache.set(key, { timestamp: Date.now(), data: stations });
