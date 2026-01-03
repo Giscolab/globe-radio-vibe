@@ -2,6 +2,12 @@
 import { logger } from '../../core/logger';
 
 import sqlite3InitModule from "@sqlite.org/sqlite-wasm";
+<<<<<<< HEAD
+=======
+
+// Charge le WASM depuis /public/sqlite3.wasm
+const wasmBinary = await fetch("/sqlite3.wasm").then(r => r.arrayBuffer());
+>>>>>>> 9eaf89d (Fix: SQLite WASM loading, Vite config, and DB initialization)
 
 export type SqliteDatabase = {
   exec: (sql: string, params?: unknown[]) => void;
@@ -49,9 +55,7 @@ const DB_NAME = 'globe-radio.sqlite3';
 
 async function detectOPFS(): Promise<boolean> {
   try {
-    if (!navigator.storage?.getDirectory) {
-      return false;
-    }
+    if (!navigator.storage?.getDirectory) return false;
     const root = await navigator.storage.getDirectory();
     const testHandle = await root.getFileHandle('__opfs_test__', { create: true });
     await root.removeEntry('__opfs_test__');
@@ -62,25 +66,26 @@ async function detectOPFS(): Promise<boolean> {
   }
 }
 
-/**
- * ✅ IMPORTANT:
- * - On n’utilise PAS locateFile (ça déclenche un fetch .wasm et retombe sur le problème MIME).
- * - On fournit le binaire directement via `wasmBinary` (import Vite ?arraybuffer).
- */
 let sqlitePromise: Promise<SqliteWasmModule> | null = null;
 
 async function loadSqliteWasm(): Promise<SqliteWasmModule> {
   if (!sqlitePromise) {
+<<<<<<< HEAD
     // Initialize without wasmBinary - let the module load it via locateFile
     sqlitePromise = sqlite3InitModule() as Promise<SqliteWasmModule>;
+=======
+sqlitePromise = sqlite3InitModule({
+  wasmBinary,
+  locateFile: () => "/sqlite3.wasm"
+}) as Promise<SqliteWasmModule>;
+
+>>>>>>> 9eaf89d (Fix: SQLite WASM loading, Vite config, and DB initialization)
   }
   return sqlitePromise;
 }
 
 export async function initDatabase(): Promise<SqliteDatabase> {
-  if (state.initialized && state.db) {
-    return state.db;
-  }
+  if (state.initialized && state.db) return state.db;
 
   logger.info('Storage', 'Initializing SQLite WASM...');
 
@@ -107,25 +112,17 @@ export async function initDatabase(): Promise<SqliteDatabase> {
 
   const wrappedDb: SqliteDatabase = {
     exec: (sql: string, params?: unknown[]) => {
-      if (params && params.length > 0) {
-        db.exec({ sql, bind: params });
-      } else {
-        db.exec(sql);
-      }
+      if (params?.length) db.exec({ sql, bind: params });
+      else db.exec(sql);
     },
     selectObjects: <T>(sql: string, params?: unknown[]): T[] => {
       const result: T[] = [];
       const options: SqliteExecOptions<T> = {
         sql,
         rowMode: 'object',
-        callback: (row: T) => {
-          result.push(row);
-          return undefined;
-        },
+        callback: (row: T) => { result.push(row); }
       };
-      if (params && params.length > 0) {
-        options.bind = params;
-      }
+      if (params?.length) options.bind = params;
       db.exec(options);
       return result;
     },
@@ -137,11 +134,9 @@ export async function initDatabase(): Promise<SqliteDatabase> {
         callback: (row: unknown[]) => {
           value = row[0];
           return false;
-        },
+        }
       };
-      if (params && params.length > 0) {
-        options.bind = params;
-      }
+      if (params?.length) options.bind = params;
       db.exec(options);
       return value;
     },
@@ -153,7 +148,6 @@ export async function initDatabase(): Promise<SqliteDatabase> {
   state.initialized = true;
 
   logger.info('Storage', `Database initialized (mode: ${state.mode})`);
-
   return wrappedDb;
 }
 
@@ -180,7 +174,6 @@ export async function closeDatabase(): Promise<void> {
 
 export async function deleteDatabase(): Promise<void> {
   await closeDatabase();
-
   if (state.mode === 'opfs') {
     try {
       const root = await navigator.storage.getDirectory();
@@ -192,114 +185,54 @@ export async function deleteDatabase(): Promise<void> {
   }
 }
 
-// ============================================================================
-// Database Maintenance Functions
-// ============================================================================
-
-/**
- * VACUUM - Defragments the database and reclaims unused space
- * Should be called periodically or after large deletions
- */
 export async function vacuumDatabase(): Promise<void> {
   const db = getDatabase();
-  if (!db) {
-    throw new Error('Database not initialized');
-  }
-
+  if (!db) throw new Error('Database not initialized');
   logger.info('Storage', 'Running VACUUM...');
-  const startTime = performance.now();
-
+  const start = performance.now();
   db.exec('VACUUM');
-
-  const duration = Math.round(performance.now() - startTime);
-  logger.info('Storage', `VACUUM completed in ${duration}ms`);
+  logger.info('Storage', `VACUUM completed in ${Math.round(performance.now() - start)}ms`);
 }
 
-/**
- * Checks database integrity for corruption
- * Returns ok: true if database is healthy
- */
 export async function checkIntegrity(): Promise<{ ok: boolean; errors: string[] }> {
   const db = getDatabase();
-  if (!db) {
-    throw new Error('Database not initialized');
-  }
-
+  if (!db) throw new Error('Database not initialized');
   logger.info('Storage', 'Running integrity check...');
-
-  const results = db.selectObjects<{ integrity_check: string }>(
-    'PRAGMA integrity_check'
-  );
-
-  const errors: string[] = [];
-  let ok = true;
-
-  for (const row of results) {
-    if (row.integrity_check !== 'ok') {
-      ok = false;
-      errors.push(row.integrity_check);
-    }
-  }
-
-  if (ok) {
-    logger.info('Storage', 'Integrity check passed');
-  } else {
-    logger.error('Storage', 'Integrity check failed:', errors);
-  }
-
+  const results = db.selectObjects<{ integrity_check: string }>('PRAGMA integrity_check');
+  const errors = results.filter(r => r.integrity_check !== 'ok').map(r => r.integrity_check);
+  const ok = errors.length === 0;
+  if (ok) logger.info('Storage', 'Integrity check passed');
+  else logger.error('Storage', 'Integrity check failed:', errors);
   return { ok, errors };
 }
 
-/**
- * ANALYZE - Updates query planner statistics
- * Should be called after large imports for optimal query performance
- */
 export async function analyzeDatabase(): Promise<void> {
   const db = getDatabase();
-  if (!db) {
-    throw new Error('Database not initialized');
-  }
-
+  if (!db) throw new Error('Database not initialized');
   logger.info('Storage', 'Running ANALYZE...');
-  const startTime = performance.now();
-
+  const start = performance.now();
   db.exec('ANALYZE');
-
-  const duration = Math.round(performance.now() - startTime);
-  logger.info('Storage', `ANALYZE completed in ${duration}ms`);
+  logger.info('Storage', `ANALYZE completed in ${Math.round(performance.now() - start)}ms`);
 }
 
-/**
- * Returns database statistics for monitoring
- */
-export async function getDatabaseStats(): Promise<{
-  sizeBytes: number;
-  pageCount: number;
-  pageSize: number;
-  tables: { name: string; rowCount: number }[];
-}> {
+export async function getDatabaseStats() {
   const db = getDatabase();
-  if (!db) {
-    throw new Error('Database not initialized');
-  }
+  if (!db) throw new Error('Database not initialized');
 
   const pageCount = db.selectValue('PRAGMA page_count') as number;
   const pageSize = db.selectValue('PRAGMA page_size') as number;
   const sizeBytes = pageCount * pageSize;
 
   const tableNames = ['stations', 'favorites', 'play_history', 'settings', 'ai_signals'];
-  const tables: { name: string; rowCount: number }[] = [];
-
-  for (const name of tableNames) {
+  const tables = tableNames.map(name => {
     try {
       const count = db.selectValue(`SELECT COUNT(*) FROM ${name}`) as number;
-      tables.push({ name, rowCount: count });
+      return { name, rowCount: count };
     } catch {
-      tables.push({ name, rowCount: 0 });
+      return { name, rowCount: 0 };
     }
-  }
+  });
 
   logger.info('Storage', `Database stats: ${(sizeBytes / 1024).toFixed(1)} KB, ${pageCount} pages`);
-
   return { sizeBytes, pageCount, pageSize, tables };
 }
