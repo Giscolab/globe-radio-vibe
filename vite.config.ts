@@ -2,15 +2,12 @@ import { defineConfig, type ViteDevServer } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
+import { registerImageProxy } from "./src/server/image-proxy";
 
 export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8080,
-    headers: {
-      "Cross-Origin-Opener-Policy": "same-origin",
-      "Cross-Origin-Embedder-Policy": "require-corp"
-    },
     mimeTypes: {
       "application/wasm": ["wasm"]
     }
@@ -49,6 +46,7 @@ export default defineConfig(({ mode }) => ({
     {
       name: "wasm-mime-fix",
       configureServer(server: ViteDevServer) {
+        registerImageProxy(server);
         server.middlewares.use((req, res, next) => {
           if (req.url?.endsWith(".wasm")) {
             res.setHeader("Content-Type", "application/wasm");
