@@ -188,6 +188,10 @@ export class SqliteStationRepository implements IStationRepository {
     }
   }
 
+  insertMany(stations: Station[]): void {
+    this.upsertMany(stations);
+  }
+
   syncStations(stations: Station[]): void {
     const db = this.getDb();
     db.exec('BEGIN TRANSACTION');

@@ -19,11 +19,12 @@ serve(async (req) => {
   }
 
   try {
-    const { stations } = await req.json() as SyncRequest;
+    const payload = await req.json() as Partial<SyncRequest>;
+    const stations = payload.stations ?? [];
     
-    if (!stations || !Array.isArray(stations)) {
+    if (!Array.isArray(stations) || stations.length === 0) {
       return new Response(
-        JSON.stringify({ error: 'stations array required' }),
+        JSON.stringify({ error: 'stations array required (build from stationRepository.getAll())' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }

@@ -33,6 +33,9 @@ type SqliteWasmModule = {
     DB: new (filename: string) => SqliteWasmDb;
     OpfsDb?: new (filename: string) => SqliteWasmDb;
   };
+  capi?: {
+    sqlite3_vfs_find?: (name: string) => unknown;
+  };
 };
 
 interface DatabaseState {
@@ -79,10 +82,11 @@ export async function initDatabase(): Promise<SqliteDatabase> {
 
   const sqlite3 = await loadSqliteWasm();
   const opfsAvailable = await detectOPFS();
+  const opfsVfsAvailable = Boolean(sqlite3.capi?.sqlite3_vfs_find?.('opfs'));
 
   let db: SqliteWasmDb;
 
-  if (opfsAvailable && sqlite3.oo1.OpfsDb) {
+  if (opfsAvailable && sqlite3.oo1.OpfsDb && opfsVfsAvailable) {
     try {
       logger.info('Storage', 'Using OPFS storage');
       db = new sqlite3.oo1.OpfsDb(DB_NAME);
@@ -93,6 +97,9 @@ export async function initDatabase(): Promise<SqliteDatabase> {
       state.mode = 'memory';
     }
   } else {
+    if (opfsAvailable && !opfsVfsAvailable) {
+      logger.warn('Storage', 'OPFS is available but sqlite3 opfs VFS is missing. Falling back to memory.');
+    }
     logger.info('Storage', 'Using in-memory storage (OPFS not available)');
     db = new sqlite3.oo1.DB(':memory:');
     state.mode = 'memory';
@@ -177,6 +184,11 @@ type SeedStation = {
 function seedIfEmpty(db: SqliteDatabase): void {
   const count = Number(db.selectValue('SELECT COUNT(*) FROM stations')) || 0;
   if (count > 0) return;
+
+  if (state.mode === 'opfs') {
+    logger.info('Storage', 'OPFS active - skipping seed data');
+    return;
+  }
 
   if (!Array.isArray(seedStations) || seedStations.length === 0) {
     logger.warn('Storage', 'Seed file is empty, skipping seed');

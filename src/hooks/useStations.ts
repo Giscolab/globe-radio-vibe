@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { getStationsByCountry } from '@/engine/radio/stationService';
+import { getByCountry } from '@/engine/radio/stationService';
 import { useRadioStore } from '@/stores/radio';
 import { useEffect, useRef } from 'react';
 import type { Station } from '@/engine/types/radio';   // ← IMPORT CRITIQUE
@@ -13,7 +13,7 @@ export function useStations(countryCode: string | null) {
     queryKey: ['stations', countryCode],
     queryFn: () => {
       if (!countryCode) throw new Error('No country code');
-      return getStationsByCountry(countryCode);
+      return getByCountry(countryCode);
     },
     enabled: Boolean(countryCode),
     staleTime: 5 * 60 * 1000,
@@ -39,13 +39,7 @@ export function useStations(countryCode: string | null) {
     // ❌ 1) Pas de données → on ne touche à rien
     if (!data || data.length === 0) return;
 
-    // ❌ 2) Fallback détecté → on ignore
-    if (data.length <= 3) return;
-
-    // ❌ 3) Si même taille → probablement même liste → ignorer
-    if (stableStationsRef.current.length === data.length) return;
-
-    // ✅ 4) Mise à jour stable
+    // ✅ Mise à jour stable
     stableStationsRef.current = data;
     setStations(data);
   }, [query.data, setStations]);
