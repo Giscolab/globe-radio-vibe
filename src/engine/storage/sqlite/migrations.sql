@@ -54,3 +54,9 @@ CREATE TABLE IF NOT EXISTS ai_signals (
   created_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (station_id) REFERENCES stations (id) ON DELETE CASCADE
 );
+
+CREATE INDEX IF NOT EXISTS idx_stations_country ON stations (country);
+CREATE INDEX IF NOT EXISTS idx_stations_name ON stations (name);
+CREATE INDEX IF NOT EXISTS idx_stations_votes ON stations (votes);
+CREATE INDEX IF NOT EXISTS idx_stations_tags ON stations (tags);
+CREATE INDEX IF NOT EXISTS idx_stations_url_resolved ON stations (url_resolved);

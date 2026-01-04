@@ -9,6 +9,7 @@ export interface IStationRepository {
   search(query: string): Station[];
   upsert(station: Station): void;
   upsertMany(stations: Station[]): void;
+  insertMany(stations: Station[]): void;
   delete(id: string): boolean;
   clear(): void;
   count(): number;
@@ -71,6 +72,10 @@ class InMemoryStationRepository implements IStationRepository {
       this.upsert(station);
     }
     logger.info('StationRepo', `Upserted ${stations.length} stations`);
+  }
+
+  insertMany(stations: Station[]): void {
+    this.upsertMany(stations);
   }
 
   delete(id: string): boolean {

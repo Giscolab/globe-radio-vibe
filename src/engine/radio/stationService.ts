@@ -143,7 +143,7 @@ async function callRadioProxy(params: Record<string, string>): Promise<RadioBrow
 // ----------------------------------
 // GET BY COUNTRY
 // ----------------------------------
-export async function getStationsByCountry(
+export async function getByCountry(
   countryCode: string,
   forceRefresh = false
 ): Promise<Station[]> {
@@ -154,10 +154,16 @@ export async function getStationsByCountry(
     return cache.get(key)!.data;
   }
 
-    logger.debug("StationService", `Fetching stations for ${countryCode}`);
+  logger.debug("StationService", `Fetching stations for ${countryCode}`);
 
   try {
     const repository = await initSqliteRepository();
+    const localStations = repository.getByCountry(countryCode);
+    if (localStations.length > 0 && !forceRefresh) {
+      cache.set(key, { timestamp: Date.now(), data: localStations });
+      return localStations;
+    }
+
     const result = await callRadioProxy({
       action: 'bycountry',
       countrycode: countryCode.toUpperCase(),
@@ -165,7 +171,6 @@ export async function getStationsByCountry(
     });
 
     if (result === null) {
-      const localStations = repository.getStationsByCountry(countryCode);
       logger.warn("StationService", `Proxy unavailable, using ${localStations.length} local stations`);
       cache.set(key, { timestamp: Date.now(), data: localStations });
       return localStations;
@@ -183,6 +188,24 @@ export async function getStationsByCountry(
     return stations;
   } catch (error) {
     logger.error("StationService", `Failed to fetch ${countryCode}: ${error}`);
+    return [];
+  }
+}
+
+export async function getAll(): Promise<Station[]> {
+  const key = 'all';
+
+  if (isCacheValid(key)) {
+    return cache.get(key)!.data;
+  }
+
+  try {
+    const repository = await initSqliteRepository();
+    const stations = repository.getAll();
+    cache.set(key, { timestamp: Date.now(), data: stations });
+    return stations;
+  } catch (error) {
+    logger.error("StationService", `Failed to fetch all stations: ${error}`);
     return [];
   }
 }
@@ -262,3 +285,4 @@ export function clearCache() {
 
 // alias compat
 export const searchStationsByQuery = searchStations;
+export const getStationsByCountry = getByCountry;

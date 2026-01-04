@@ -203,6 +203,63 @@ export async function searchStations(
   }
 }
 
+export async function fetchAllStations(options?: {
+  pageSize?: number;
+  hidebroken?: boolean;
+  maxOffset?: number;
+}): Promise<Station[]> {
+  const pageSize = options?.pageSize ?? 10000;
+  const hidebroken = options?.hidebroken ?? true;
+  const maxOffset = options?.maxOffset ?? 5_000_000;
+  const stations: Station[] = [];
+
+  let offset = 0;
+
+  for (;;) {
+    const params = new URLSearchParams({
+      hidebroken: hidebroken ? 'true' : 'false',
+      order: 'stationuuid',
+      reverse: 'false',
+      limit: pageSize.toString(),
+      offset: offset.toString(),
+    });
+
+    const endpoint = `/json/stations?${params.toString()}`;
+
+    try {
+      const raw = await fetchWithRetry<unknown[]>(endpoint);
+      if (!Array.isArray(raw) || raw.length === 0) break;
+
+      for (const item of raw) {
+        try {
+          const parsed = RadioBrowserStationSchema.parse(item);
+          const station = normalizeStation(parsed);
+          const validated = StationSchema.safeParse(station);
+          if (validated.success) {
+            stations.push(validated.data);
+          }
+        } catch (e) {
+          logger.debug('RadioBrowser', `Skipping invalid station: ${e}`);
+        }
+      }
+
+      logger.info('RadioBrowser', `Fetched ${stations.length} stations (offset ${offset})`);
+      offset += pageSize;
+
+      if (offset > maxOffset) {
+        logger.warn('RadioBrowser', 'Offset limit reached, stopping fetch');
+        break;
+      }
+    } catch (error) {
+      logger.error('RadioBrowser', `Failed to fetch stations batch: ${error}`);
+      break;
+    }
+  }
+
+  logger.info('RadioBrowser', `Total stations fetched: ${stations.length}`);
+  return stations;
+}
+
 export async function getStationById(id: string): Promise<Station | null> {
   const endpoint = `/json/stations/byuuid/${id}`;
   
