@@ -10,10 +10,15 @@ export default defineConfig(({ mode }) => ({
     port: 8080,
     mimeTypes: {
       "application/wasm": ["wasm"]
+    },
+
+    // 🔥 AJOUT CRUCIAL POUR OPFS / SharedArrayBuffer
+    headers: {
+      "Cross-Origin-Embedder-Policy": "require-corp",
+      "Cross-Origin-Opener-Policy": "same-origin"
     }
   },
 
-  // Empêche Vite de bundler SQLite WASM
   optimizeDeps: {
     exclude: ["@sqlite.org/sqlite-wasm"]
   },
