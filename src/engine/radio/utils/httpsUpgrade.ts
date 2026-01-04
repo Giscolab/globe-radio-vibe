@@ -1,0 +1,268 @@
+// Utility - HTTPS Upgrade and Proxy URL generation for audio streams
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+
+// Force proxy flag - can be set externally
+let forceProxyEnabled = false;
+
+export function setForceProxy(enabled: boolean): void {
+  forceProxyEnabled = enabled;
+}
+
+export function isForceProxyEnabled(): boolean {
+  return forceProxyEnabled;
+}
+
+/**
+ * Comprehensive list of domains known to support HTTPS
+ * Organized by region/type for maintainability
+ */
+const HTTPS_COMPATIBLE_DOMAINS = [
+  // === European Public Broadcasters ===
+  // France
+  'radiofrance.fr', 'icecast.radiofrance.fr', 'stream.radiofrance.fr',
+  'nrj.fr', 'stream.nrj.fr', 'cdn.nrjaudio.fm',
+  'skyrock.fm', 'stream.skyrock.com',
+  'funradio.fr', 'rtl.fr', 'rtl2.fr', 'rfi.fr',
+  'stream.rfi.fr', 'europe1.fr', 'rmc.bfmtv.com',
+  
+  // Germany
+  'swr.de', 'br.de', 'ndr.de', 'wdr.de', 'mdr.de', 'hr.de', 'sr.de',
+  'rbb-online.de', 'deutschlandradio.de', 'dlf.de', 'sslstream.dlf.de',
+  'rndfnk.com', 'laut.fm', 'stream.laut.fm',
+  
+  // UK
+  'bbc.co.uk', 'bbcmedia.co.uk', 'as-hls-ww-live.akamaized.net',
+  'stream.live.vc.bbcmedia.co.uk', 'classicfm.com', 'absoluteradio.co.uk',
+  'planetradio.co.uk', 'radiox.co.uk', 'capital.co.uk', 'heart.co.uk',
+  
+  // Austria, Switzerland, Netherlands
+  'orf.at', 'stream.orf.at', 'srf.ch', 'stream.srg-ssr.ch',
+  'npo.nl', 'icecast.omroep.nl',
+  
+  // Italy, Spain, Portugal
+  'rai.it', 'stream.rai.it', 'rtve.es', 'rtp.pt', 'stream.rtp.pt',
+  
+  // Belgium, Nordic
+  'rtbf.be', 'vrt.be', 'dr.dk', 'nrk.no', 'svt.se', 'yle.fi',
+  
+  // Eastern Europe
+  'polskieradio.pl', 'rozhlas.cz', 'rtvs.sk',
+  
+  // === North American Broadcasters ===
+  'npr.org', 'stream.npr.org', 'kqed.org',
+  'cbc.ca', 'streaming.cbc.ca',
+  
+  // === Global CDN and Streaming Platforms ===
+  // Akamai
+  'akamaized.net', 'akamaihd.net', 'akamai.net',
+  
+  // AWS/Cloudfront
+  'cloudfront.net', 'amazonaws.com',
+  
+  // Fastly
+  'fastly.net', 'fastlylb.net',
+  
+  // iHeartRadio / StreamTheWorld
+  'streamtheworld.com', 'iheart.com', 'ihrcloud.com',
+  'playerservices.streamtheworld.com',
+  
+  // TuneIn
+  'tunein.com', 'stream.tunein.com',
+  
+  // Triton Digital
+  'tritoncontent.com', 'tritondigital.com',
+  
+  // === Streaming Hosts and Platforms ===
+  'shoutcast.com', 'stream.shoutcast.com',
+  'icecast.org',
+  'live365.com', 'streaming.live365.com',
+  'radionomy.com', 'stream.radionomy.com',
+  'azuracast.com',
+  'radiojar.com',
+  'caster.fm', 'streams.caster.fm',
+  'securenetsystems.net',
+  'zeno.fm', 'stream.zeno.fm',
+  'streamerr.co',
+  'myradiostream.com',
+  'listen2myradio.com',
+  
+  // === Radio Network Aggregators ===
+  'radio.de', 'stream.radio.de',
+  'radio.net',
+  'radio.garden',
+  'onlineradiobox.com',
+  
+  // === International Broadcasters ===
+  // Asia
+  'radiko.jp', 'jcbasimul.com', 'nhk.or.jp',
+  
+  // Australia/NZ
+  'abc.net.au', 'stream.abc.net.au', 'sbs.com.au', 'rnz.co.nz',
+  
+  // Latin America
+  'rfrancais.com', 'dw.com', 'stream.dw.com',
+  
+  // === Additional Known HTTPS Streams ===
+  'radioparadise.com', 'stream.radioparadise.com',
+  'somafm.com', 'ice.somafm.com',
+  'di.fm', 'listen.di.fm',
+  'jazzradio.com', 'classicalradio.com', 'rockradio.com',
+  'zenolive.com', 'streamingv2.shoutcast.com',
+  'securestreams.net', 'ssl-proxy.icastcenter.com',
+  'audio-edge.spotify.com', 'audio.dotphoto.com',
+];
+
+// Cache for URL checks to avoid repeated parsing
+const httpsCache = new Map<string, boolean>();
+
+/**
+ * Check if a domain is known to support HTTPS
+ */
+export function canUpgradeToHttps(url: string): boolean {
+  if (!url || url.startsWith('https://')) return true;
+  
+  const cached = httpsCache.get(url);
+  if (cached !== undefined) return cached;
+  
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    const canUpgrade = HTTPS_COMPATIBLE_DOMAINS.some(domain => 
+      hostname === domain || hostname.endsWith('.' + domain)
+    );
+    httpsCache.set(url, canUpgrade);
+    return canUpgrade;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Upgrade HTTP URL to HTTPS
+ */
+export function upgradeToHttps(url: string): string {
+  if (!url || url.startsWith('https://')) return url;
+  
+  try {
+    const urlObj = new URL(url);
+    urlObj.protocol = 'https:';
+    return urlObj.toString();
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * Get a secure playable URL for a stream
+ * - Returns original if already HTTPS (unless forceProxy is enabled)
+ * - Upgrades to HTTPS if domain supports it
+ * - Returns proxy URL for HTTP-only streams
+ * - If forceProxy is enabled, always uses proxy for ALL streams (including HTTPS)
+ */
+export function getSecureStreamUrl(url: string): string {
+  if (!url) return url;
+  
+  // If force proxy is enabled, use proxy for ALL streams (including HTTPS)
+  // This helps when direct HTTPS fails due to CORS/Origin restrictions
+  if (forceProxyEnabled) {
+    return buildProxyUrl(url);
+  }
+  
+  // Already secure
+  if (url.startsWith('https://')) {
+    return url;
+  }
+  
+  // Try HTTPS upgrade for known domains
+  if (canUpgradeToHttps(url)) {
+    return upgradeToHttps(url);
+  }
+  
+  // Use proxy for HTTP-only streams
+  return buildProxyUrl(url);
+}
+
+/**
+ * Check if a URL is HLS (m3u8) format
+ */
+export function isHlsStream(url: string): boolean {
+  if (!url) return false;
+  try {
+    const pathname = new URL(url).pathname.toLowerCase();
+    return pathname.endsWith('.m3u8') || pathname.includes('.m3u8');
+  } catch {
+    return url.toLowerCase().includes('.m3u8');
+  }
+}
+
+/**
+ * Check if the current browser supports HLS natively
+ */
+export function browserSupportsHls(): boolean {
+  // Safari supports HLS natively
+  const ua = navigator.userAgent.toLowerCase();
+  return ua.includes('safari') && !ua.includes('chrome');
+}
+
+/**
+ * Build candidate URLs for playback (direct + proxy fallbacks)
+ */
+export function buildCandidateUrls(station: { url?: string; urlResolved?: string }): string[] {
+  const rawUrls = [station.urlResolved, station.url].filter(Boolean) as string[];
+  const candidates: string[] = [];
+  const seen = new Set<string>();
+  
+  for (const rawUrl of rawUrls) {
+    // Skip HLS on non-Safari browsers
+    if (isHlsStream(rawUrl) && !browserSupportsHls()) {
+      console.warn('[httpsUpgrade] Skipping HLS stream on non-Safari browser:', rawUrl);
+      continue;
+    }
+    
+    // Add direct secure URL
+    const secureUrl = getSecureStreamUrl(rawUrl);
+    if (!seen.has(secureUrl)) {
+      candidates.push(secureUrl);
+      seen.add(secureUrl);
+    }
+    
+    // Add proxy URL as fallback (if not already proxied and not force proxy)
+    if (!forceProxyEnabled && !secureUrl.includes('audio-stream-proxy')) {
+      const proxyUrl = buildProxyUrl(rawUrl);
+      if (!seen.has(proxyUrl)) {
+        candidates.push(proxyUrl);
+        seen.add(proxyUrl);
+      }
+    }
+  }
+  
+  return candidates;
+}
+
+/**
+ * Build the audio proxy URL
+ */
+export function buildProxyUrl(streamUrl: string): string {
+  if (!SUPABASE_URL) {
+    console.warn('[httpsUpgrade] SUPABASE_URL not set, cannot build proxy URL');
+    return streamUrl;
+  }
+  
+  const encodedUrl = encodeURIComponent(streamUrl);
+  return `${SUPABASE_URL}/functions/v1/audio-stream-proxy?url=${encodedUrl}`;
+}
+
+/**
+ * Check if a URL needs proxying
+ */
+export function needsProxy(url: string): boolean {
+  if (!url || url.startsWith('https://')) return false;
+  return !canUpgradeToHttps(url);
+}
+
+/**
+ * Clear the HTTPS cache (useful for testing)
+ */
+export function clearHttpsCache(): void {
+  httpsCache.clear();
+}

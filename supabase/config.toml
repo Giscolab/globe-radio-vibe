@@ -1,0 +1,19 @@
+project_id = "qrufkomvbsjwqmpstecu"
+
+[functions.check-station-health]
+verify_jwt = false
+
+[functions.radio-proxy]
+verify_jwt = false
+
+[functions.search-stations]
+verify_jwt = false
+
+[functions.similar-stations]
+verify_jwt = false
+
+[functions.sync-embeddings]
+verify_jwt = false
+
+[functions.audio-stream-proxy]
+verify_jwt = false

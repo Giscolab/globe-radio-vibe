@@ -1,0 +1,407 @@
+// Engine - SQLite Station Repository
+import { Station } from '../../types/radio';
+import { IStationRepository } from '../../radio/repository/stationRepo';
+import { SqliteDatabase, getDatabase } from './db';
+import { logger } from '../../core/logger';
+
+interface StationRow {
+  id: string;
+  name: string;
+  url: string;
+  url_resolved: string | null;
+  homepage: string | null;
+  favicon: string | null;
+  country: string;
+  country_code: string;
+  state: string | null;
+  language: string | null;
+  language_codes: string | null;
+  codec: string | null;
+  bitrate: number;
+  votes: number;
+  click_count: number;
+  click_trend: number;
+  lat: number | null;
+  lon: number | null;
+  tags: string | null;
+  last_check_ok: number;
+  last_check_time: string | null;
+}
+
+interface PlayHistoryRow extends StationRow {
+  played_at: string;
+  duration_seconds: number;
+}
+
+export interface PlayHistoryRecord {
+  station: Station;
+  playedAt: string;
+  durationSeconds: number;
+}
+
+interface AISignalRow {
+  id: number;
+  station_id: string;
+  type: string;
+  duration_seconds: number | null;
+  details: string | null;
+  created_at: string;
+}
+
+export type AISignalType = 'play' | 'skip' | 'favorite_add' | 'favorite_remove' | 'error';
+
+export interface AISignalRecord {
+  id: number;
+  stationId: string;
+  type: AISignalType;
+  durationSeconds: number;
+  details: string | null;
+  createdAt: string;
+}
+
+function rowToStation(row: StationRow): Station {
+  return {
+    id: row.id,
+    name: row.name,
+    url: row.url,
+    urlResolved: row.url_resolved || undefined,
+    homepage: row.homepage || undefined,
+    favicon: row.favicon || undefined,
+    country: row.country,
+    countryCode: row.country_code,
+    state: row.state || undefined,
+    language: row.language || undefined,
+    codec: row.codec || undefined,
+    bitrate: row.bitrate,
+    votes: row.votes,
+    clickCount: row.click_count,
+    clickTrend: row.click_trend,
+    geo: row.lat && row.lon ? { lat: row.lat, lon: row.lon } : undefined,
+    tags: row.tags?.split(',').filter(Boolean) || [],
+    lastCheckOk: row.last_check_ok === 1,
+    lastCheckTime: row.last_check_time || undefined,
+  };
+}
+
+function stationToParams(station: Station): unknown[] {
+  return [
+    station.id,
+    station.name,
+    station.url,
+    station.urlResolved || null,
+    station.homepage || null,
+    station.favicon || null,
+    station.country,
+    station.countryCode,
+    station.state || null,
+    station.language || null,
+    null, // language_codes - not in schema
+    station.codec || null,
+    station.bitrate || 0,
+    station.votes || 0,
+    station.clickCount || 0,
+    station.clickTrend || 0,
+    station.geo?.lat || null,
+    station.geo?.lon || null,
+    station.tags?.join(',') || null,
+    station.lastCheckOk ? 1 : 0,
+    station.lastCheckTime || null,
+  ];
+}
+
+export class SqliteStationRepository implements IStationRepository {
+  private db: SqliteDatabase | null = null;
+
+  private getDb(): SqliteDatabase {
+    if (!this.db) {
+      this.db = getDatabase();
+    }
+    if (!this.db) {
+      throw new Error('Database not initialized');
+    }
+    return this.db;
+  }
+
+  getAll(): Station[] {
+    const rows = this.getDb().selectObjects<StationRow>('SELECT * FROM stations');
+    return rows.map(rowToStation);
+  }
+
+  getById(id: string): Station | undefined {
+    const rows = this.getDb().selectObjects<StationRow>(
+      'SELECT * FROM stations WHERE id = ?',
+      [id]
+    );
+    return rows.length > 0 ? rowToStation(rows[0]) : undefined;
+  }
+
+  getByCountry(countryCode: string): Station[] {
+    const code = countryCode.toUpperCase();
+    const rows = this.getDb().selectObjects<StationRow>(
+      'SELECT * FROM stations WHERE country_code = ? ORDER BY votes DESC',
+      [code]
+    );
+    return rows.map(rowToStation);
+  }
+
+  getStationsByCountry(countryCode: string): Station[] {
+    return this.getByCountry(countryCode);
+  }
+
+  search(query: string): Station[] {
+    const pattern = `%${query}%`;
+    const rows = this.getDb().selectObjects<StationRow>(
+      `SELECT * FROM stations 
+       WHERE name LIKE ? OR country LIKE ? OR tags LIKE ?
+       ORDER BY votes DESC LIMIT 100`,
+      [pattern, pattern, pattern]
+    );
+    return rows.map(rowToStation);
+  }
+
+  upsert(station: Station): void {
+    const params = stationToParams(station);
+    this.getDb().exec(
+      `INSERT OR REPLACE INTO stations (
+        id, name, url, url_resolved, homepage, favicon,
+        country, country_code, state, language, language_codes,
+        codec, bitrate, votes, click_count, click_trend,
+        lat, lon, tags, last_check_ok, last_check_time, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+      params
+    );
+  }
+
+  upsertMany(stations: Station[]): void {
+    const db = this.getDb();
+    db.exec('BEGIN TRANSACTION');
+    try {
+      for (const station of stations) {
+        this.upsert(station);
+      }
+      db.exec('COMMIT');
+      logger.info('SqliteRepo', `Upserted ${stations.length} stations`);
+    } catch (error) {
+      db.exec('ROLLBACK');
+      logger.error('SqliteRepo', 'Batch upsert failed:', error);
+      throw error;
+    }
+  }
+
+  insertMany(stations: Station[]): void {
+    this.upsertMany(stations);
+  }
+
+  syncStations(stations: Station[]): void {
+    const db = this.getDb();
+    db.exec('BEGIN TRANSACTION');
+    try {
+      for (const station of stations) {
+        const params = stationToParams(station);
+        db.exec(
+          `INSERT INTO stations (
+            id, name, url, url_resolved, homepage, favicon,
+            country, country_code, state, language, language_codes,
+            codec, bitrate, votes, click_count, click_trend,
+            lat, lon, tags, last_check_ok, last_check_time, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+          ON CONFLICT(id) DO UPDATE SET
+            name = excluded.name,
+            url = excluded.url,
+            url_resolved = excluded.url_resolved,
+            homepage = excluded.homepage,
+            favicon = excluded.favicon,
+            country = excluded.country,
+            country_code = excluded.country_code,
+            state = excluded.state,
+            language = excluded.language,
+            language_codes = excluded.language_codes,
+            codec = excluded.codec,
+            bitrate = excluded.bitrate,
+            votes = excluded.votes,
+            click_count = excluded.click_count,
+            click_trend = excluded.click_trend,
+            lat = excluded.lat,
+            lon = excluded.lon,
+            tags = excluded.tags,
+            last_check_ok = excluded.last_check_ok,
+            last_check_time = excluded.last_check_time,
+            updated_at = datetime('now')`,
+          params
+        );
+      }
+      db.exec('COMMIT');
+      logger.info('SqliteRepo', `Synced ${stations.length} stations`);
+    } catch (error) {
+      db.exec('ROLLBACK');
+      logger.error('SqliteRepo', 'Station sync failed:', error);
+    }
+  }
+
+  delete(id: string): boolean {
+    this.getDb().exec('DELETE FROM stations WHERE id = ?', [id]);
+    return this.getDb().changes() > 0;
+  }
+
+  clear(): void {
+    this.getDb().exec('DELETE FROM stations');
+    logger.info('SqliteRepo', 'All stations cleared');
+  }
+
+  count(): number {
+    const count = this.getDb().selectValue('SELECT COUNT(*) FROM stations');
+    return (count as number) || 0;
+  }
+
+  // Favorites methods
+  addFavorite(stationId: string): void {
+    this.getDb().exec(
+      'INSERT OR IGNORE INTO favorites (station_id) VALUES (?)',
+      [stationId]
+    );
+  }
+
+  removeFavorite(stationId: string): void {
+    this.getDb().exec('DELETE FROM favorites WHERE station_id = ?', [stationId]);
+  }
+
+  getFavorites(): Station[] {
+    const rows = this.getDb().selectObjects<StationRow>(
+      `SELECT s.* FROM stations s
+       INNER JOIN favorites f ON s.id = f.station_id
+       ORDER BY f.added_at DESC`
+    );
+    return rows.map(rowToStation);
+  }
+
+  isFavorite(stationId: string): boolean {
+    const count = this.getDb().selectValue(
+      'SELECT COUNT(*) FROM favorites WHERE station_id = ?',
+      [stationId]
+    );
+    return (count as number) > 0;
+  }
+
+  // Play history methods
+  recordPlay(stationId: string, durationSeconds: number = 0): void {
+    this.getDb().exec(
+      'INSERT INTO play_history (station_id, duration_seconds) VALUES (?, ?)',
+      [stationId, durationSeconds]
+    );
+  }
+
+  getPlayHistory(limit: number = 100): PlayHistoryRecord[] {
+    const rows = this.getDb().selectObjects<PlayHistoryRow>(
+      `SELECT s.*, h.played_at, h.duration_seconds FROM stations s
+       INNER JOIN play_history h ON s.id = h.station_id
+       ORDER BY h.played_at DESC LIMIT ?`,
+      [limit]
+    );
+    return rows.map((row) => ({
+      station: rowToStation(row),
+      playedAt: row.played_at,
+      durationSeconds: row.duration_seconds || 0,
+    }));
+  }
+
+  clearHistory(): void {
+    this.getDb().exec('DELETE FROM play_history');
+  }
+
+  // AI signal methods
+  recordSignal(type: AISignalType, stationId: string, options?: { durationSeconds?: number; details?: string }): void {
+    this.getDb().exec(
+      `INSERT INTO ai_signals (station_id, type, duration_seconds, details)
+       VALUES (?, ?, ?, ?)`,
+      [
+        stationId,
+        type,
+        options?.durationSeconds ?? 0,
+        options?.details ?? null,
+      ]
+    );
+  }
+
+  getSignals(limit: number = 200, types?: AISignalType[]): AISignalRecord[] {
+    const params: unknown[] = [];
+    let whereClause = '';
+
+    if (types && types.length > 0) {
+      const placeholders = types.map(() => '?').join(', ');
+      whereClause = `WHERE type IN (${placeholders})`;
+      params.push(...types);
+    }
+
+    params.push(limit);
+
+    const rows = this.getDb().selectObjects<AISignalRow>(
+      `SELECT id, station_id, type, duration_seconds, details, created_at
+       FROM ai_signals
+       ${whereClause}
+       ORDER BY created_at DESC
+       LIMIT ?`,
+      params
+    );
+
+    return rows.map((row) => ({
+      id: row.id,
+      stationId: row.station_id,
+      type: row.type as AISignalType,
+      durationSeconds: row.duration_seconds ?? 0,
+      details: row.details ?? null,
+      createdAt: row.created_at,
+    }));
+  }
+
+  // Settings methods
+  setSetting(key: string, value: unknown): void {
+    const jsonValue = JSON.stringify(value);
+    this.getDb().exec(
+      `INSERT OR REPLACE INTO settings (key, value, updated_at) 
+       VALUES (?, ?, datetime('now'))`,
+      [key, jsonValue]
+    );
+  }
+
+  getSetting<T>(key: string, defaultValue: T): T {
+    const value = this.getDb().selectValue(
+      'SELECT value FROM settings WHERE key = ?',
+      [key]
+    );
+    if (value === null || value === undefined) {
+      return defaultValue;
+    }
+    try {
+      return JSON.parse(value as string) as T;
+    } catch {
+      return defaultValue;
+    }
+  }
+}
+
+// Singleton instance logic with async initialization support
+let sqliteRepo: SqliteStationRepository | null = null;
+let initializing: Promise<SqliteStationRepository> | null = null;
+
+export async function initSqliteRepository(): Promise<SqliteStationRepository> {
+  if (sqliteRepo) return sqliteRepo;
+
+  if (!initializing) {
+    initializing = (async () => {
+      const repo = new SqliteStationRepository();
+      // Force initialization
+      repo['getDb']();
+      return repo;
+    })();
+  }
+
+  sqliteRepo = await initializing;
+  return sqliteRepo;
+}
+
+export function getSqliteRepository(): SqliteStationRepository {
+  if (!sqliteRepo) {
+    throw new Error('SQLite repository not initialized. Call initSqliteRepository() first.');
+  }
+  return sqliteRepo;
+}

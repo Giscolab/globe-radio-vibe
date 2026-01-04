@@ -1,0 +1,329 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Globe Radio Engine - Neumorphic Design System */
+
+@layer base {
+  :root {
+    /* Base neumorphic background - soft gray */
+    --background: 220 15% 91%;
+    --foreground: 220 25% 15%;
+
+    /* Neumorphic surface colors */
+    --neo-bg: 220 15% 91%;
+    --neo-surface: 220 15% 93%;
+    --neo-shadow-light: 0 0% 100%;
+    --neo-shadow-dark: 220 15% 75%;
+    --neo-shadow-inset-light: 0 0% 100%;
+    --neo-shadow-inset-dark: 220 15% 82%;
+    
+    /* Neumorphic depth and radius */
+    --neo-radius: 1rem;
+    --neo-depth: 8px;
+    --neo-depth-sm: 4px;
+    --neo-depth-lg: 12px;
+
+    /* Card - neumorphic raised */
+    --card: 220 15% 91%;
+    --card-foreground: 220 25% 15%;
+
+    --popover: 220 15% 93%;
+    --popover-foreground: 220 25% 15%;
+
+    /* Primary - deep ocean blue for globe accent */
+    --primary: 210 80% 45%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 210 85% 55%;
+
+    /* Secondary - soft teal */
+    --secondary: 175 40% 50%;
+    --secondary-foreground: 0 0% 100%;
+
+    /* Accent - warm coral for active stations */
+    --accent: 15 85% 55%;
+    --accent-foreground: 0 0% 100%;
+
+    /* Muted */
+    --muted: 220 15% 85%;
+    --muted-foreground: 220 20% 35%;
+
+    /* Destructive */
+    --destructive: 0 70% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Globe specific colors */
+    --globe-ocean: 210 70% 25%;
+    --globe-land: 140 30% 45%;
+    --globe-border: 45 20% 85%;
+    --globe-atmosphere: 200 80% 60%;
+
+    /* Player colors */
+    --player-active: 140 60% 45%;
+    --player-inactive: 220 15% 60%;
+    --player-progress: 210 80% 50%;
+
+    /* Genre colors for stations */
+    --genre-pop: 330 75% 55%;
+    --genre-rock: 0 70% 50%;
+    --genre-jazz: 45 80% 50%;
+    --genre-classical: 270 50% 55%;
+    --genre-electronic: 180 80% 50%;
+    --genre-hiphop: 35 90% 50%;
+    --genre-country: 25 60% 45%;
+    --genre-other: 220 30% 50%;
+
+    --border: 220 15% 80%;
+    --input: 220 15% 88%;
+    --ring: 210 80% 50%;
+    --radius: 1rem;
+
+    --sidebar-background: 220 15% 89%;
+    --sidebar-foreground: 220 25% 20%;
+    --sidebar-primary: 210 80% 45%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 15% 85%;
+    --sidebar-accent-foreground: 220 25% 15%;
+    --sidebar-border: 220 15% 82%;
+    --sidebar-ring: 210 80% 50%;
+  }
+
+  .dark {
+    --background: 220 20% 12%;
+    --foreground: 220 15% 90%;
+
+    --neo-bg: 220 20% 12%;
+    --neo-surface: 220 20% 15%;
+    --neo-shadow-light: 220 20% 18%;
+    --neo-shadow-dark: 220 25% 5%;
+    --neo-shadow-inset-light: 220 20% 16%;
+    --neo-shadow-inset-dark: 220 25% 8%;
+
+    --card: 220 20% 14%;
+    --card-foreground: 220 15% 90%;
+
+    --popover: 220 20% 16%;
+    --popover-foreground: 220 15% 90%;
+
+    --primary: 210 80% 55%;
+    --primary-foreground: 220 25% 10%;
+    --primary-glow: 210 85% 65%;
+
+    --secondary: 175 50% 45%;
+    --secondary-foreground: 0 0% 100%;
+
+    --accent: 15 80% 55%;
+    --accent-foreground: 0 0% 100%;
+
+    --muted: 220 20% 20%;
+    --muted-foreground: 220 15% 60%;
+
+    --destructive: 0 65% 45%;
+    --destructive-foreground: 0 0% 100%;
+
+    --globe-ocean: 210 60% 15%;
+    --globe-land: 140 25% 35%;
+    --globe-border: 45 15% 60%;
+    --globe-atmosphere: 200 70% 50%;
+
+    --player-active: 140 55% 50%;
+    --player-inactive: 220 15% 40%;
+    --player-progress: 210 75% 55%;
+
+    --border: 220 20% 22%;
+    --input: 220 20% 18%;
+    --ring: 210 75% 55%;
+
+    --sidebar-background: 220 20% 10%;
+    --sidebar-foreground: 220 15% 85%;
+    --sidebar-primary: 210 80% 55%;
+    --sidebar-primary-foreground: 220 25% 10%;
+    --sidebar-accent: 220 20% 18%;
+    --sidebar-accent-foreground: 220 15% 85%;
+    --sidebar-border: 220 20% 18%;
+    --sidebar-ring: 210 80% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: hsl(var(--neo-bg));
+    border-radius: 4px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.3);
+    border-radius: 4px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.5);
+  }
+}
+
+/* Neumorphic utility classes */
+@layer components {
+  /* Raised neumorphic surface */
+  .neo-raised {
+    background: hsl(var(--neo-bg));
+    border-radius: var(--neo-radius);
+    box-shadow: 
+      var(--neo-depth) var(--neo-depth) calc(var(--neo-depth) * 2) hsl(var(--neo-shadow-dark)),
+      calc(var(--neo-depth) * -1) calc(var(--neo-depth) * -1) calc(var(--neo-depth) * 2) hsl(var(--neo-shadow-light));
+  }
+
+  .neo-raised-sm {
+    background: hsl(var(--neo-bg));
+    border-radius: calc(var(--neo-radius) * 0.75);
+    box-shadow: 
+      var(--neo-depth-sm) var(--neo-depth-sm) calc(var(--neo-depth-sm) * 2) hsl(var(--neo-shadow-dark)),
+      calc(var(--neo-depth-sm) * -1) calc(var(--neo-depth-sm) * -1) calc(var(--neo-depth-sm) * 2) hsl(var(--neo-shadow-light));
+  }
+
+  .neo-raised-lg {
+    background: hsl(var(--neo-bg));
+    border-radius: calc(var(--neo-radius) * 1.5);
+    box-shadow: 
+      var(--neo-depth-lg) var(--neo-depth-lg) calc(var(--neo-depth-lg) * 2) hsl(var(--neo-shadow-dark)),
+      calc(var(--neo-depth-lg) * -1) calc(var(--neo-depth-lg) * -1) calc(var(--neo-depth-lg) * 2) hsl(var(--neo-shadow-light));
+  }
+
+  /* Pressed/inset neumorphic surface */
+  .neo-pressed {
+    background: hsl(var(--neo-bg));
+    border-radius: var(--neo-radius);
+    box-shadow: 
+      inset var(--neo-depth-sm) var(--neo-depth-sm) calc(var(--neo-depth-sm) * 2) hsl(var(--neo-shadow-inset-dark)),
+      inset calc(var(--neo-depth-sm) * -1) calc(var(--neo-depth-sm) * -1) calc(var(--neo-depth-sm) * 2) hsl(var(--neo-shadow-inset-light));
+  }
+
+  /* Flat neumorphic surface */
+  .neo-flat {
+    background: hsl(var(--neo-surface));
+    border-radius: var(--neo-radius);
+    box-shadow: none;
+  }
+
+  .ui-fade {
+    transition: opacity 200ms ease, transform 200ms ease;
+  }
+
+  /* Interactive neumorphic button */
+  .neo-button {
+    background: hsl(var(--neo-bg));
+    border-radius: var(--neo-radius);
+    box-shadow: 
+      var(--neo-depth-sm) var(--neo-depth-sm) calc(var(--neo-depth-sm) * 2) hsl(var(--neo-shadow-dark)),
+      calc(var(--neo-depth-sm) * -1) calc(var(--neo-depth-sm) * -1) calc(var(--neo-depth-sm) * 2) hsl(var(--neo-shadow-light));
+    transition: all 0.15s ease-out;
+  }
+
+  .neo-button:hover {
+    box-shadow: 
+      calc(var(--neo-depth-sm) * 1.2) calc(var(--neo-depth-sm) * 1.2) calc(var(--neo-depth-sm) * 2.5) hsl(var(--neo-shadow-dark)),
+      calc(var(--neo-depth-sm) * -1.2) calc(var(--neo-depth-sm) * -1.2) calc(var(--neo-depth-sm) * 2.5) hsl(var(--neo-shadow-light));
+  }
+
+  .neo-button:active,
+  .neo-button.active {
+    box-shadow: 
+      inset var(--neo-depth-sm) var(--neo-depth-sm) calc(var(--neo-depth-sm) * 2) hsl(var(--neo-shadow-inset-dark)),
+      inset calc(var(--neo-depth-sm) * -1) calc(var(--neo-depth-sm) * -1) calc(var(--neo-depth-sm) * 2) hsl(var(--neo-shadow-inset-light));
+  }
+
+  /* Primary colored neumorphic button */
+  .neo-button-primary {
+    background: linear-gradient(145deg, hsl(var(--primary-glow)), hsl(var(--primary)));
+    color: hsl(var(--primary-foreground));
+    border-radius: var(--neo-radius);
+    box-shadow: 
+      var(--neo-depth-sm) var(--neo-depth-sm) calc(var(--neo-depth-sm) * 2) hsl(var(--neo-shadow-dark)),
+      calc(var(--neo-depth-sm) * -1) calc(var(--neo-depth-sm) * -1) calc(var(--neo-depth-sm) * 2) hsl(var(--neo-shadow-light)),
+      0 0 20px hsl(var(--primary) / 0.3);
+    transition: all 0.15s ease-out;
+  }
+
+  .neo-button-primary:hover {
+    box-shadow: 
+      var(--neo-depth-sm) var(--neo-depth-sm) calc(var(--neo-depth-sm) * 2) hsl(var(--neo-shadow-dark)),
+      calc(var(--neo-depth-sm) * -1) calc(var(--neo-depth-sm) * -1) calc(var(--neo-depth-sm) * 2) hsl(var(--neo-shadow-light)),
+      0 0 30px hsl(var(--primary) / 0.5);
+  }
+
+  /* Neumorphic progress/slider track */
+  .neo-track {
+    background: hsl(var(--neo-bg));
+    border-radius: 999px;
+    box-shadow: 
+      inset 2px 2px 4px hsl(var(--neo-shadow-inset-dark)),
+      inset -2px -2px 4px hsl(var(--neo-shadow-inset-light));
+  }
+
+  /* Neumorphic circle (for controls) */
+  .neo-circle {
+    background: hsl(var(--neo-bg));
+    border-radius: 50%;
+    box-shadow: 
+      var(--neo-depth-sm) var(--neo-depth-sm) calc(var(--neo-depth-sm) * 2) hsl(var(--neo-shadow-dark)),
+      calc(var(--neo-depth-sm) * -1) calc(var(--neo-depth-sm) * -1) calc(var(--neo-depth-sm) * 2) hsl(var(--neo-shadow-light));
+  }
+
+  /* Globe container */
+  .globe-container {
+    background: radial-gradient(ellipse at center, hsl(var(--globe-ocean) / 0.8), hsl(var(--background)));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-fade {
+    transition: none;
+  }
+}
+
+/* Animations */
+@layer utilities {
+  .animate-pulse-glow {
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-glow {
+    0%, 100% {
+      box-shadow: 0 0 10px hsl(var(--player-active) / 0.4);
+    }
+    50% {
+      box-shadow: 0 0 25px hsl(var(--player-active) / 0.7);
+    }
+  }
+
+  .animate-spin-slow {
+    animation: spin 20s linear infinite;
+  }
+
+  @keyframes float {
+    0%, 100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-5px);
+    }
+  }
+
+  .animate-float {
+    animation: float 3s ease-in-out infinite;
+  }
+}
