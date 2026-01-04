@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useGeoStore } from '@/stores/geo.store';
@@ -14,27 +14,34 @@ export function CountryPicker({ countryIndex, countryMeshes }: CountryPickerProp
   const { setSelectedCountry, setHoveredCountry, setSelectedCountryMesh } = useGeoStore();
   const raycaster = useMemo(() => new THREE.Raycaster(), []);
   const pointer = useMemo(() => new THREE.Vector2(), []);
+  const rectRef = useRef<DOMRect | null>(null);
+  const frameRef = useRef<number | null>(null);
+  const latestPointerRef = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     if (!countryIndex) return;
 
     const dom = gl.domElement;
 
-    const getIntersection = (event: PointerEvent) => {
-      const rect = dom.getBoundingClientRect();
-      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    const updateRect = () => {
+      rectRef.current = dom.getBoundingClientRect();
+    };
+
+    const getIntersection = (clientX: number, clientY: number) => {
+      const rect = rectRef.current ?? dom.getBoundingClientRect();
+      pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
       raycaster.setFromCamera(pointer, camera);
       return raycaster.intersectObjects(countryMeshes, false);
     };
 
-    const handlePointerMove = (event: PointerEvent) => {
+    const handlePointerMove = (clientX: number, clientY: number) => {
       if (!countryMeshes.length) {
         setHoveredCountry(null);
         return;
       }
 
-      const intersections = getIntersection(event);
+      const intersections = getIntersection(clientX, clientY);
       const hit = intersections[0]?.object;
       const iso = String(hit?.userData.iso ?? '');
 
@@ -53,7 +60,7 @@ export function CountryPicker({ countryIndex, countryMeshes }: CountryPickerProp
 
     const handleClick = (event: PointerEvent) => {
       if (!countryMeshes.length) return;
-      const intersections = getIntersection(event);
+      const intersections = getIntersection(event.clientX, event.clientY);
       const hit = intersections[0]?.object as THREE.Mesh | undefined;
       const iso = String(hit?.userData.iso ?? '');
 
@@ -68,14 +75,37 @@ export function CountryPicker({ countryIndex, countryMeshes }: CountryPickerProp
       setSelectedCountryMesh(hit ?? null);
     };
 
-    dom.addEventListener('pointermove', handlePointerMove);
+    const schedulePointerMove = (event: PointerEvent) => {
+      latestPointerRef.current = { x: event.clientX, y: event.clientY };
+      if (frameRef.current !== null) return;
+      frameRef.current = requestAnimationFrame(() => {
+        frameRef.current = null;
+        const latest = latestPointerRef.current;
+        if (!latest) return;
+        handlePointerMove(latest.x, latest.y);
+      });
+    };
+
+    updateRect();
+    const resizeObserver = new ResizeObserver(updateRect);
+    resizeObserver.observe(dom);
+    window.addEventListener('resize', updateRect);
+    window.addEventListener('scroll', updateRect, true);
+
+    dom.addEventListener('pointermove', schedulePointerMove);
     dom.addEventListener('pointerleave', handlePointerLeave);
     dom.addEventListener('click', handleClick);
 
     return () => {
-      dom.removeEventListener('pointermove', handlePointerMove);
+      dom.removeEventListener('pointermove', schedulePointerMove);
       dom.removeEventListener('pointerleave', handlePointerLeave);
       dom.removeEventListener('click', handleClick);
+      resizeObserver.disconnect();
+      window.removeEventListener('resize', updateRect);
+      window.removeEventListener('scroll', updateRect, true);
+      if (frameRef.current !== null) {
+        cancelAnimationFrame(frameRef.current);
+      }
     };
   }, [camera, countryIndex, countryMeshes, gl, pointer, raycaster, setHoveredCountry, setSelectedCountry, setSelectedCountryMesh]);
 
