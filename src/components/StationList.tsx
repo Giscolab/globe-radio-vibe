@@ -12,11 +12,19 @@ import { checkStationHealth } from '@/engine/radio/health/healthChecker';
 import { shallow } from 'zustand/shallow';
 
 interface StationListProps {
-  stations: Station[];
+  stations?: Station[];
   isLoading?: boolean;
 }
 
-export function StationList({ stations, isLoading }: StationListProps) {
+const buildFaviconUrl = (favicon?: string | null) => {
+  if (!favicon) return null;
+  if (favicon.startsWith('data:') || favicon.startsWith('blob:') || favicon.startsWith('/')) {
+    return favicon;
+  }
+  return `/api/image-proxy?url=${encodeURIComponent(favicon)}`;
+};
+
+export function StationList({ stations = [], isLoading }: StationListProps) {
   const { currentStation, status, play, toggle } = usePlayer();
 
   const stationHealth = useRadioStore((s) => s.stationHealth, shallow);
@@ -34,13 +42,22 @@ export function StationList({ stations, isLoading }: StationListProps) {
     async (e: React.MouseEvent, station: Station) => {
       e.stopPropagation();
 
-      if (testingIds.has(station.id)) return;
+      const url = station.urlResolved || station.url;
+      if (!url) return;
 
-      setTestingIds((prev) => new Set(prev).add(station.id));
+      let shouldTest = false;
+      setTestingIds((prev) => {
+        if (prev.has(station.id)) return prev;
+        shouldTest = true;
+        const next = new Set(prev);
+        next.add(station.id);
+        return next;
+      });
+
+      if (!shouldTest) return;
 
       try {
-        const url = station.urlResolved || station.url;
-        const health = await checkStationHealth(url!);
+        const health = await checkStationHealth(url, 5000, station.id);
         setStationHealth(station.id, health);
       } finally {
         setTestingIds((prev) => {
@@ -50,7 +67,7 @@ export function StationList({ stations, isLoading }: StationListProps) {
         });
       }
     },
-    [testingIds, setStationHealth]
+    [setStationHealth]
   );
 
   const handleGenreClick = useCallback(
@@ -118,6 +135,7 @@ export function StationList({ stations, isLoading }: StationListProps) {
         const isActive = currentStation?.id === station.id;
         const isPlaying = isActive && status === 'playing';
         const health = stationHealth?.[station.id] ?? null;
+        const faviconUrl = buildFaviconUrl(station.favicon);
 
         return (
           <div
@@ -144,9 +162,9 @@ export function StationList({ stations, isLoading }: StationListProps) {
                     : undefined,
                 }}
               >
-                {station.favicon && !brokenFavicons.has(station.id) ? (
+                {faviconUrl && !brokenFavicons.has(station.id) ? (
                   <img
-                    src={station.favicon}
+                    src={faviconUrl}
                     alt=""
                     loading="lazy"
                     decoding="async"

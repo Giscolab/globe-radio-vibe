@@ -1,7 +1,6 @@
 // Component - StationsPanel: side panel with tabs for stations, favorites, history
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { X, Radio, RefreshCw, Heart, History, Sparkles, Globe, PanelRightClose, Settings } from 'lucide-react';
-import { useGeoStore } from '@/stores/geo.store';
+import { Radio, RefreshCw, Heart, History, Sparkles, Globe, PanelRightClose, Settings } from 'lucide-react';
 import { useRadioStore } from '@/stores/radio';
 import { useStations } from '@/hooks/useStations';
 import { StationList } from './StationList';
@@ -165,7 +164,15 @@ export function StationsPanel({ onClose }: StationsPanelProps) {
     } finally {
       setIsAISearching(false);
     }
-  }, [selectedCountry, selectedAmbience, stations, topStations, setAISearchResults, setIsAISearching]);
+  }, [
+    selectedCountry,
+    selectedAmbience,
+    stations,
+    topStations,
+    setAISearchResults,
+    setIsAISearching,
+    setSelectedAmbience
+  ]);
 
   // Determine which stations to display
   const currentStations = selectedCountry ? stations : topStations;
