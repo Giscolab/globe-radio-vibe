@@ -176,7 +176,8 @@ export function StationsPanel({ onClose }: StationsPanelProps) {
 
   // Determine which stations to display
   const currentStations = selectedCountry ? stations : topStations;
-  const displayedStations = aiSearchResults.length > 0 ? aiSearchResults : currentStations;
+  const safeStations = currentStations ?? [];
+  const displayedStations = aiSearchResults.length > 0 ? aiSearchResults : safeStations;
   const currentLoading = selectedCountry ? isLoading : isLoadingTop;
 
   return (
