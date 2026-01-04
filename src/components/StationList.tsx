@@ -10,19 +10,12 @@ import { HealthDot } from './StationHealthBadge';
 import { useRadioStore } from '@/stores/radio';
 import { checkStationHealth } from '@/engine/radio/health/healthChecker';
 import { shallow } from 'zustand/shallow';
+import { proxify } from '@/utils/image';
 
 interface StationListProps {
   stations?: Station[];
   isLoading?: boolean;
 }
-
-const buildFaviconUrl = (favicon?: string | null) => {
-  if (!favicon) return null;
-  if (favicon.startsWith('data:') || favicon.startsWith('blob:') || favicon.startsWith('/')) {
-    return favicon;
-  }
-  return `/api/image-proxy?url=${encodeURIComponent(favicon)}`;
-};
 
 export function StationList({ stations = [], isLoading }: StationListProps) {
   const { currentStation, status, play, toggle } = usePlayer();
@@ -135,7 +128,7 @@ export function StationList({ stations = [], isLoading }: StationListProps) {
         const isActive = currentStation?.id === station.id;
         const isPlaying = isActive && status === 'playing';
         const health = stationHealth?.[station.id] ?? null;
-        const faviconUrl = buildFaviconUrl(station.favicon);
+        const faviconUrl = proxify(station.favicon);
 
         return (
           <div
