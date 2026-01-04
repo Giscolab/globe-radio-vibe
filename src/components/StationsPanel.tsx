@@ -18,6 +18,8 @@ import { getTopStations } from '@/engine/radio/stationService';
 
 type TabId = 'stations' | 'favorites' | 'history' | 'settings';
 
+const PAGE_SIZE = 50;
+
 const TABS: { id: TabId; label: string; icon: typeof Radio }[] = [
   { id: 'stations', label: 'Stations', icon: Radio },
   { id: 'favorites', label: 'Favoris', icon: Heart },
@@ -51,20 +53,54 @@ export function StationsPanel({ onClose }: StationsPanelProps) {
   } = useRadioStore();
 
   // Hook React Query (stable)
-  const { stations, isLoading, isFetching, refetch } =
-    useStations(selectedCountry?.iso2 ?? null);
+  const {
+    stations,
+    isLoading,
+    isFetching,
+    isFetchingNextPage,
+    hasNextPage,
+    refetch,
+    fetchNextPage,
+  } = useStations(selectedCountry?.iso2 ?? null, PAGE_SIZE);
+
+  const [isLoadingMoreTop, setIsLoadingMoreTop] = useState(false);
+  const [hasMoreTopStations, setHasMoreTopStations] = useState(true);
 
   // Load top stations when no country is selected
   useEffect(() => {
     if (topStations.length === 0 && !isLoadingTop && !hasLoadedTopStations.current) {
       hasLoadedTopStations.current = true;
       setLoadingTop(true);
-      getTopStations(50)
-        .then(setTopStations)
+      getTopStations({ limit: PAGE_SIZE })
+        .then((stationsResult) => {
+          setTopStations(stationsResult);
+          setHasMoreTopStations(stationsResult.length >= PAGE_SIZE);
+        })
         .catch(console.error)
         .finally(() => setLoadingTop(false));
     }
   }, [topStations.length, isLoadingTop, setTopStations, setLoadingTop]);
+
+  const handleLoadMoreTopStations = useCallback(async () => {
+    if (isLoadingMoreTop || !hasMoreTopStations) return;
+    setIsLoadingMoreTop(true);
+    try {
+      const nextPage = await getTopStations({
+        limit: PAGE_SIZE,
+        offset: topStations.length,
+      });
+      if (nextPage.length > 0) {
+        setTopStations([...topStations, ...nextPage]);
+      }
+      if (nextPage.length < PAGE_SIZE) {
+        setHasMoreTopStations(false);
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsLoadingMoreTop(false);
+    }
+  }, [hasMoreTopStations, isLoadingMoreTop, setTopStations, topStations]);
 
   // Start health monitor and subscribe to updates
   useEffect(() => {
@@ -179,6 +215,12 @@ export function StationsPanel({ onClose }: StationsPanelProps) {
   const safeStations = currentStations ?? [];
   const displayedStations = aiSearchResults.length > 0 ? aiSearchResults : safeStations;
   const currentLoading = selectedCountry ? isLoading : isLoadingTop;
+  const isShowingAIResults = aiSearchResults.length > 0;
+  const canLoadMore = selectedCountry ? Boolean(hasNextPage) : hasMoreTopStations;
+  const isLoadingMore = selectedCountry ? isFetchingNextPage : isLoadingMoreTop;
+  const handleLoadMore = selectedCountry
+    ? () => fetchNextPage()
+    : handleLoadMoreTopStations;
 
   return (
     <div className="neo-raised-lg h-full flex flex-col">
@@ -300,10 +342,24 @@ export function StationsPanel({ onClose }: StationsPanelProps) {
       {/* Tab content */}
       <div className="flex-1 overflow-hidden">
         {activeTab === 'stations' && (
-          <StationList 
-            stations={displayedStations} 
-            isLoading={currentLoading || isAISearching} 
-          />
+          <div className="flex flex-col h-full">
+            <StationList
+              stations={displayedStations}
+              isLoading={currentLoading || isAISearching}
+            />
+            {!currentLoading && !isAISearching && !isShowingAIResults && canLoadMore && (
+              <div className="p-4 border-t border-border/50">
+                <button
+                  type="button"
+                  onClick={handleLoadMore}
+                  disabled={isLoadingMore}
+                  className="neo-button w-full py-2 text-sm"
+                >
+                  {isLoadingMore ? 'Chargement...' : 'Charger plus'}
+                </button>
+              </div>
+            )}
+          </div>
         )}
         {activeTab === 'favorites' && <FavoritesPanel />}
         {activeTab === 'history' && <HistoryPanel />}

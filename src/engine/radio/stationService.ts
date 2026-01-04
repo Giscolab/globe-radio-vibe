@@ -140,16 +140,40 @@ async function callRadioProxy(params: Record<string, string>): Promise<RadioBrow
   }
 }
 
+type PaginationOptions = {
+  limit?: number;
+  offset?: number;
+  page?: number;
+};
+
+const DEFAULT_LIMIT = 100;
+
+function resolvePagination(options?: PaginationOptions): { limit: number; offset: number } {
+  const limit = options?.limit ?? DEFAULT_LIMIT;
+  if (options?.offset != null) {
+    return { limit, offset: Math.max(0, options.offset) };
+  }
+  if (options?.page != null) {
+    const pageIndex = Math.max(1, options.page);
+    return { limit, offset: (pageIndex - 1) * limit };
+  }
+  return { limit, offset: 0 };
+}
+
 // ----------------------------------
 // GET BY COUNTRY
 // ----------------------------------
 export async function getByCountry(
   countryCode: string,
+  options?: PaginationOptions | boolean,
   forceRefresh = false
 ): Promise<Station[]> {
-  const key = `country:${countryCode.toUpperCase()}`;
+  const resolvedOptions = typeof options === 'boolean' ? undefined : options;
+  const shouldForceRefresh = typeof options === 'boolean' ? options : forceRefresh;
+  const { limit, offset } = resolvePagination(resolvedOptions);
+  const key = `country:${countryCode.toUpperCase()}:${limit}:${offset}`;
 
-  if (!forceRefresh && isCacheValid(key)) {
+  if (!shouldForceRefresh && isCacheValid(key)) {
     logger.debug("StationService", `Cache hit for ${countryCode}`);
     return cache.get(key)!.data;
   }
@@ -159,21 +183,24 @@ export async function getByCountry(
   try {
     const repository = await initSqliteRepository();
     const localStations = repository.getByCountry(countryCode);
-    if (localStations.length > 0 && !forceRefresh) {
-      cache.set(key, { timestamp: Date.now(), data: localStations });
-      return localStations;
+    if (localStations.length > 0 && !shouldForceRefresh) {
+      const pagedLocal = localStations.slice(offset, offset + limit);
+      cache.set(key, { timestamp: Date.now(), data: pagedLocal });
+      return pagedLocal;
     }
 
     const result = await callRadioProxy({
       action: 'bycountry',
       countrycode: countryCode.toUpperCase(),
-      limit: '100',
+      limit: limit.toString(),
+      offset: offset.toString(),
     });
 
     if (result === null) {
       logger.warn("StationService", `Proxy unavailable, using ${localStations.length} local stations`);
-      cache.set(key, { timestamp: Date.now(), data: localStations });
-      return localStations;
+      const pagedLocal = localStations.slice(offset, offset + limit);
+      cache.set(key, { timestamp: Date.now(), data: pagedLocal });
+      return pagedLocal;
     }
 
     const stations = result.map(mapStation);
@@ -213,8 +240,12 @@ export async function getAll(): Promise<Station[]> {
 // ----------------------------------
 // SEARCH
 // ----------------------------------
-export async function searchStations(query: string): Promise<Station[]> {
-  const key = `search:${query}`;
+export async function searchStations(
+  query: string,
+  options?: PaginationOptions
+): Promise<Station[]> {
+  const { limit, offset } = resolvePagination(options);
+  const key = `search:${query}:${limit}:${offset}`;
 
   if (isCacheValid(key)) return cache.get(key)!.data;
 
@@ -224,7 +255,8 @@ export async function searchStations(query: string): Promise<Station[]> {
     const result = await callRadioProxy({
       action: 'search',
       name: query,
-      limit: '100',
+      limit: limit.toString(),
+      offset: offset.toString(),
     });
 
     if (result === null) return [];
@@ -242,18 +274,30 @@ export async function searchStations(query: string): Promise<Station[]> {
 // ----------------------------------
 // GET TOP STATIONS
 // ----------------------------------
-export async function getTopStations(limit = 100): Promise<Station[]> {
-  const key = `top:${limit}`;
+export async function getTopStations(
+  limitOrOptions: number | PaginationOptions = DEFAULT_LIMIT
+): Promise<Station[]> {
+  const options = typeof limitOrOptions === 'number' ? { limit: limitOrOptions } : limitOrOptions;
+  const { limit, offset } = resolvePagination(options);
+  const key = `top:${limit}:${offset}`;
 
   if (isCacheValid(key)) return cache.get(key)!.data;
 
   logger.debug("StationService", `Fetching top ${limit} stations`);
 
   try {
-    const result = await callRadioProxy({
-      action: 'topclick',
-      limit: limit.toString(),
-    });
+    const result = await callRadioProxy(
+      offset > 0
+        ? {
+            action: 'search',
+            limit: limit.toString(),
+            offset: offset.toString(),
+          }
+        : {
+            action: 'topclick',
+            limit: limit.toString(),
+          }
+    );
 
     if (result === null) return [];
 
