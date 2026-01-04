@@ -3,13 +3,13 @@ import React, { useState, useCallback } from 'react';
 import { Radio, Play, Pause, Globe, MapPin, Wifi, Loader2, CheckCircle, XCircle } from 'lucide-react';
 import { Station } from '@/engine/types/radio';
 import { usePlayer } from '@/hooks/usePlayer';
-import { useEnrichedStationsSync } from '@/hooks/useEnrichedStation';
 import { QualityBadge } from './QualityBadge';
 import { PopularityIndicator } from './PopularityIndicator';
 import { GenrePills } from './GenrePills';
 import { HealthDot } from './StationHealthBadge';
 import { useRadioStore } from '@/stores/radio';
 import { checkStationHealth } from '@/engine/radio/health/healthChecker';
+import { shallow } from 'zustand/shallow';
 
 interface StationListProps {
   stations: Station[];
@@ -18,36 +18,69 @@ interface StationListProps {
 
 export function StationList({ stations, isLoading }: StationListProps) {
   const { currentStation, status, play, toggle } = usePlayer();
-  const setSelectedGenre = useRadioStore((state) => state.setSelectedGenre);
-  const stationHealth = useRadioStore((state) => state.stationHealth);
-  const setStationHealth = useRadioStore((state) => state.setStationHealth);
-  const enrichedStations = stations;
+
+  const stationHealth = useRadioStore((s) => s.stationHealth, shallow);
+  const setSelectedGenre = useRadioStore((s) => s.setSelectedGenre);
+  const setStationHealth = useRadioStore((s) => s.setStationHealth);
+
   const [testingIds, setTestingIds] = useState<Set<string>>(new Set());
   const [brokenFavicons, setBrokenFavicons] = useState<Set<string>>(new Set());
 
   const handleFaviconError = useCallback((stationId: string) => {
-    setBrokenFavicons(prev => new Set(prev).add(stationId));
+    setBrokenFavicons((prev) => new Set(prev).add(stationId));
   }, []);
 
-  const handleTestConnection = useCallback(async (e: React.MouseEvent, station: Station) => {
-    e.stopPropagation();
+  const handleTestConnection = useCallback(
+    async (e: React.MouseEvent, station: Station) => {
+      e.stopPropagation();
 
-    if (testingIds.has(station.id)) return;
+      if (testingIds.has(station.id)) return;
 
-    setTestingIds((prev) => new Set(prev).add(station.id));
+      setTestingIds((prev) => new Set(prev).add(station.id));
 
-    try {
-      const url = station.urlResolved || station.url;
-      const health = await checkStationHealth(url!);
-      setStationHealth(station.id, health);
-    } finally {
-      setTestingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(station.id);
-        return next;
-      });
-    }
-  }, [testingIds, setStationHealth]);
+      try {
+        const url = station.urlResolved || station.url;
+        const health = await checkStationHealth(url!);
+        setStationHealth(station.id, health);
+      } finally {
+        setTestingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(station.id);
+          return next;
+        });
+      }
+    },
+    [testingIds, setStationHealth]
+  );
+
+  const handleGenreClick = useCallback(
+    (genre: string) => {
+      setSelectedGenre(genre);
+    },
+    [setSelectedGenre]
+  );
+
+  const handleRowAction = useCallback(
+    (station: Station) => {
+      const isActive = currentStation?.id === station.id;
+      if (isActive) {
+        toggle();
+      } else {
+        play(station);
+      }
+    },
+    [currentStation?.id ?? '', play, toggle]
+  );
+
+  const handleRowKeyDown = useCallback(
+    (e: React.KeyboardEvent, station: Station) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        handleRowAction(station);
+      }
+    },
+    [handleRowAction]
+  );
 
   if (isLoading) {
     return (
@@ -72,38 +105,19 @@ export function StationList({ stations, isLoading }: StationListProps) {
       <div className="p-8 text-center">
         <Globe className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
         <p className="text-muted-foreground">Aucune station trouvée</p>
-        <p className="text-sm text-muted-foreground mt-1">Cliquez sur un pays pour voir ses stations</p>
+        <p className="text-sm text-muted-foreground mt-1">
+          Cliquez sur un pays pour voir ses stations
+        </p>
       </div>
     );
   }
 
-  const handleGenreClick = useCallback((genre: string) => {
-    setSelectedGenre(genre);
-  }, [setSelectedGenre]);
-
-  const handleRowAction = useCallback((station: Station) => {
-    const isActive = currentStation?.id === station.id;
-    if (isActive) {
-      toggle();
-    } else {
-      play(station);
-    }
-  }, [currentStation?.id, play, toggle]);
-
-  const handleRowKeyDown = useCallback((e: React.KeyboardEvent, station: Station) => {
-    // Enter or Space should trigger the same action as click
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      handleRowAction(station);
-    }
-  }, [handleRowAction]);
-
   return (
     <div className="p-4 space-y-2 overflow-y-auto max-h-[calc(100vh-200px)]">
-      {enrichedStations.map((station) => {
+      {stations.map((station) => {
         const isActive = currentStation?.id === station.id;
         const isPlaying = isActive && status === 'playing';
-        const health = stationHealth[station.id] || null;
+        const health = stationHealth?.[station.id] ?? null;
 
         return (
           <div
@@ -122,7 +136,6 @@ export function StationList({ stations, isLoading }: StationListProps) {
             }}
           >
             <div className="flex items-center gap-3">
-              {/* Station icon/favicon */}
               <div
                 className="neo-circle w-10 h-10 flex items-center justify-center flex-shrink-0 relative"
                 style={{
@@ -144,7 +157,6 @@ export function StationList({ stations, isLoading }: StationListProps) {
                   <Radio className="w-5 h-5 text-primary" />
                 )}
 
-                {/* Playing indicator */}
                 {isPlaying && (
                   <div className="absolute inset-0 flex items-center justify-center bg-primary/20 rounded-full animate-pulse">
                     <Pause className="w-4 h-4 text-primary" />
@@ -152,9 +164,7 @@ export function StationList({ stations, isLoading }: StationListProps) {
                 )}
               </div>
 
-              {/* Station info */}
               <div className="flex-1 min-w-0 text-left">
-                {/* Name + Quality badge + Health */}
                 <div className="flex items-center gap-2">
                   <HealthDot health={health} />
                   <h4 className="font-medium text-foreground truncate text-sm">
@@ -167,7 +177,6 @@ export function StationList({ stations, isLoading }: StationListProps) {
                   />
                 </div>
 
-                {/* Location */}
                 {station.displayLocation && (
                   <div className="flex items-center gap-1 mt-0.5 text-[10px] text-muted-foreground">
                     <MapPin className="w-3 h-3" />
@@ -175,7 +184,6 @@ export function StationList({ stations, isLoading }: StationListProps) {
                   </div>
                 )}
 
-                {/* Genres */}
                 <div className="mt-1.5">
                   <GenrePills
                     genres={station.subGenres}
@@ -187,7 +195,6 @@ export function StationList({ stations, isLoading }: StationListProps) {
                   />
                 </div>
 
-                {/* Bitrate + Codec */}
                 {station.bitrate && (
                   <div className="flex items-center gap-2 mt-1">
                     <span className="text-[10px] text-muted-foreground">
@@ -198,7 +205,6 @@ export function StationList({ stations, isLoading }: StationListProps) {
                 )}
               </div>
 
-              {/* Test connection button */}
               <button
                 onClick={(e) => handleTestConnection(e, station)}
                 disabled={testingIds.has(station.id)}
@@ -217,7 +223,6 @@ export function StationList({ stations, isLoading }: StationListProps) {
                 )}
               </button>
 
-              {/* Play button */}
               <button
                 onClick={(e) => {
                   e.stopPropagation();

@@ -35,20 +35,25 @@ export function StationsPanel({ onClose }: StationsPanelProps) {
   const [selectedAmbience, setSelectedAmbience] = useState<AmbienceType | null>(null);
   const [hasSynced, setHasSynced] = useState(false);
   const hasLoadedTopStations = useRef(false);
-  
-  const { selectedCountry, setSelectedCountry } = useGeoStore();
-  const { 
+
+  // 🟩 Correction : un seul appel Zustand
+  const {
+    selectedCountry,
+    setSelectedCountry,
     topStations,
     setTopStations,
     isLoadingTop,
-    setLoadingTop, 
-    setAISearchResults, 
-    aiSearchResults, 
-    isAISearching, 
+    setLoadingTop,
+    aiSearchResults,
+    setAISearchResults,
+    isAISearching,
     setIsAISearching,
     setStationHealth
   } = useRadioStore();
-  const { stations, isLoading, isFetching, refetch } = useStations(selectedCountry?.iso2 ?? null);
+
+  // Hook React Query (stable)
+  const { stations, isLoading, isFetching, refetch } =
+    useStations(selectedCountry?.iso2 ?? null);
 
   // Load top stations when no country is selected
   useEffect(() => {
@@ -62,18 +67,19 @@ export function StationsPanel({ onClose }: StationsPanelProps) {
     }
   }, [topStations.length, isLoadingTop, setTopStations, setLoadingTop]);
 
-  // Start health monitor and subscribe to updates - deferred to reduce TTI
+  // Start health monitor and subscribe to updates
   useEffect(() => {
-    const scheduleTask = window.requestIdleCallback || ((cb: () => void) => setTimeout(cb, 2000));
-    
+    const scheduleTask =
+      window.requestIdleCallback || ((cb: () => void) => setTimeout(cb, 2000));
+
     const idleId = scheduleTask(() => {
       healthMonitor.start(120000); // Check every 2 minutes
     });
-    
+
     const unsubscribe = healthMonitor.onUpdate((stationId, health) => {
       setStationHealth(stationId, health);
     });
-    
+
     return () => {
       unsubscribe();
       if (window.cancelIdleCallback) {
@@ -82,14 +88,15 @@ export function StationsPanel({ onClose }: StationsPanelProps) {
     };
   }, [setStationHealth]);
 
-  // Register stations for health monitoring - deferred
+  // Register stations for health monitoring
   useEffect(() => {
     const stationsToMonitor = selectedCountry ? stations : topStations;
     if (stationsToMonitor.length > 0) {
-      const scheduleTask = window.requestIdleCallback || ((cb: () => void) => setTimeout(cb, 3000));
-      
+      const scheduleTask =
+        window.requestIdleCallback || ((cb: () => void) => setTimeout(cb, 3000));
+
       scheduleTask(() => {
-        stationsToMonitor.forEach(station => {
+        stationsToMonitor.forEach((station) => {
           const url = station.urlResolved || station.url;
           if (url) {
             healthMonitor.registerStation(station.id, url);
@@ -98,6 +105,7 @@ export function StationsPanel({ onClose }: StationsPanelProps) {
       });
     }
   }, [stations, topStations, selectedCountry]);
+
 
   // Sync embeddings when stations are loaded - batched to reduce TBT
   useEffect(() => {

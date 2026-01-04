@@ -2,7 +2,7 @@
 import { getGenreIcon } from '@/engine/radio/enrichment/genreMapper';
 
 interface GenrePillsProps {
-  genres: string[];
+  genres?: string[]; // <-- sécurisé
   primaryGenre?: string;
   max?: number;
   onGenreClick?: (genre: string) => void;
@@ -28,24 +28,24 @@ const genreColors: Record<string, string> = {
 };
 
 export function GenrePills({ 
-  genres, 
-  primaryGenre,
+  genres = [],        // <-- valeur par défaut
+  primaryGenre = '',  // <-- valeur par défaut
   max = 3, 
   onGenreClick,
   size = 'sm',
   className = '',
   insideButton = false
 }: GenrePillsProps) {
+
   if (genres.length === 0 && !primaryGenre) {
     return null;
   }
-  
+
   const displayGenres = genres.slice(0, max);
   const remaining = genres.length - max;
   const isSmall = size === 'sm';
-  
+
   const getColorClass = (genre: string): string => {
-    // Check if genre matches a primary category
     const normalizedGenre = genre.toLowerCase();
     for (const [key, value] of Object.entries(genreColors)) {
       if (normalizedGenre.includes(key) || key.includes(normalizedGenre)) {
@@ -54,16 +54,13 @@ export function GenrePills({
     }
     return genreColors.other;
   };
-  
+
   const handleClick = (genre: string) => {
-    if (onGenreClick) {
-      onGenreClick(genre);
-    }
+    onGenreClick?.(genre);
   };
-  
+
   return (
     <div className={`flex flex-wrap gap-1 ${className}`}>
-      {/* Primary genre with icon */}
       {primaryGenre && (
         insideButton ? (
           <span
@@ -96,8 +93,7 @@ export function GenrePills({
           </button>
         )
       )}
-      
-      {/* Sub-genres */}
+
       {displayGenres.map((genre) => (
         insideButton ? (
           <span
@@ -130,8 +126,7 @@ export function GenrePills({
           </button>
         )
       ))}
-      
-      {/* Remaining count */}
+
       {remaining > 0 && (
         <span 
           className={`
