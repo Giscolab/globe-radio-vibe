@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import type { Feature, Polygon, MultiPolygon } from 'geojson';
 import { latLonToXYZ } from '@/engine';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils';
+import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 
 const DEFAULT_COUNTRY_COLOR = new THREE.Color('hsl(210, 45%, 28%)');
 
@@ -64,7 +64,7 @@ function buildCountryGeometry(
     return geometries[0];
   }
 
-  return mergeGeometries(geometries, false) ?? null;
+  return BufferGeometryUtils.mergeGeometries(geometries, false) ?? null;
 }
 
 export function CountryMeshes({ features, radius, onMeshesReady }: CountryMeshesProps) {
