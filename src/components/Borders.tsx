@@ -12,7 +12,8 @@ export function Borders({ features, radius }: BordersProps) {
   const geometry = useMemo(() => {
     const positions: number[] = [];
 
-    const pushSegment = (start: [number, number], end: [number, number]) => {
+    const pushSegment = (start: number[], end: number[]) => {
+      if (start.length < 2 || end.length < 2) return;
       const [x1, y1, z1] = latLonToXYZ(start[1], start[0], radius);
       const [x2, y2, z2] = latLonToXYZ(end[1], end[0], radius);
       positions.push(x1, y1, z1, x2, y2, z2);
