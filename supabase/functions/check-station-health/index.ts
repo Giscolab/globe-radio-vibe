@@ -1,5 +1,6 @@
 // Edge Function - Check Station Health: proxy health checks to bypass CORS
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -18,6 +19,16 @@ interface StationHealthResult {
   lastChecked: number;
   error?: string;
   statusCode?: number;
+}
+
+// Validate URL format and protocol
+function isValidStreamUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return ['http:', 'https:'].includes(parsed.protocol);
+  } catch {
+    return false;
+  }
 }
 
 async function checkUrl(url: string, timeoutMs: number): Promise<Omit<StationHealthResult, 'id'>> {
@@ -87,6 +98,31 @@ serve(async (req) => {
   }
 
   try {
+    // Verify authentication
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    
+    // Verify the user's token
+    const authClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } }
+    });
+    
+    const { data: { user }, error: authError } = await authClient.auth.getUser();
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid token' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const { urls, timeoutMs = 5000 }: HealthCheckRequest = await req.json();
 
     if (!urls || !Array.isArray(urls) || urls.length === 0) {
@@ -98,9 +134,19 @@ serve(async (req) => {
 
     // Limit batch size
     const MAX_BATCH = 10;
-    const urlsToCheck = urls.slice(0, MAX_BATCH);
+    const urlsToCheck = urls
+      .slice(0, MAX_BATCH)
+      .filter(item => item && typeof item.id === 'string' && typeof item.url === 'string')
+      .filter(item => isValidStreamUrl(item.url));
 
-    console.log(`[check-station-health] Checking ${urlsToCheck.length} URLs`);
+    if (urlsToCheck.length === 0) {
+      return new Response(
+        JSON.stringify({ error: 'No valid URLs to check', results: [] }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log(`[check-station-health] User ${user.id} checking ${urlsToCheck.length} URLs`);
 
     // Check all URLs in parallel
     const results: StationHealthResult[] = await Promise.all(
