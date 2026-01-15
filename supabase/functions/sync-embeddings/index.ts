@@ -6,11 +6,28 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const MAX_STATIONS_PER_REQUEST = 500;
+const MAX_DESCRIPTOR_LENGTH = 500;
+
 interface SyncRequest {
   stations: Array<{
     id: string;
     descriptor: string;
   }>;
+}
+
+// Validate UUID format
+function isValidUUID(id: string): boolean {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(id);
+}
+
+// Sanitize descriptor
+function sanitizeDescriptor(descriptor: string): string {
+  return descriptor
+    .replace(/[\x00-\x1F\x7F]/g, '') // Remove control characters
+    .trim()
+    .slice(0, MAX_DESCRIPTOR_LENGTH);
 }
 
 serve(async (req) => {
@@ -19,6 +36,32 @@ serve(async (req) => {
   }
 
   try {
+    // Verify authentication
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    
+    // Verify the user's token
+    const authClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } }
+    });
+    
+    const { data: { user }, error: authError } = await authClient.auth.getUser();
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid token' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const payload = await req.json() as Partial<SyncRequest>;
     const stations = payload.stations ?? [];
     
@@ -29,10 +72,33 @@ serve(async (req) => {
       );
     }
 
-    console.log(`[sync-embeddings] Syncing ${stations.length} stations`);
+    // Limit the number of stations per request
+    if (stations.length > MAX_STATIONS_PER_REQUEST) {
+      return new Response(
+        JSON.stringify({ error: `Too many stations (max ${MAX_STATIONS_PER_REQUEST} per request)` }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    // Validate and sanitize stations
+    const validStations = stations
+      .filter(s => s && typeof s.id === 'string' && typeof s.descriptor === 'string')
+      .filter(s => isValidUUID(s.id))
+      .map(s => ({
+        id: s.id,
+        descriptor: sanitizeDescriptor(s.descriptor)
+      }))
+      .filter(s => s.descriptor.length > 0);
+
+    if (validStations.length === 0) {
+      return new Response(
+        JSON.stringify({ error: 'No valid stations provided' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log(`[sync-embeddings] User ${user.id} syncing ${validStations.length} stations`);
+
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Get existing embeddings
@@ -43,12 +109,12 @@ serve(async (req) => {
     const existingIds = new Set(existing?.map(e => e.id) || []);
     
     // Filter to only new stations
-    const newStations = stations.filter(s => !existingIds.has(s.id));
+    const newStations = validStations.filter(s => !existingIds.has(s.id));
     
     if (newStations.length === 0) {
       console.log('[sync-embeddings] No new stations to sync');
       return new Response(
-        JSON.stringify({ synced: 0, total: stations.length }),
+        JSON.stringify({ synced: 0, total: validStations.length }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -83,7 +149,7 @@ serve(async (req) => {
     console.log(`[sync-embeddings] Synced ${synced}/${newStations.length} new stations`);
 
     return new Response(
-      JSON.stringify({ synced, total: stations.length, existing: existingIds.size }),
+      JSON.stringify({ synced, total: validStations.length, existing: existingIds.size }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
