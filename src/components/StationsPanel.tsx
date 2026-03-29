@@ -12,11 +12,9 @@ import { SearchBar } from './SearchBar';
 import { FilterPanel } from './FilterPanel';
 import { AmbienceChips } from './AmbienceChips';
 import { RecommendationsPanel } from './RecommendationsPanel';
-import { aiEngine, syncEmbeddings, type AmbienceType } from '@/engine/radio/ai';
-import { enrichStationSync } from '@/engine/radio/enrichment/stationEnricher';
+import { aiEngine, type AmbienceType } from '@/engine/radio/ai';
 import { healthMonitor } from '@/engine/radio/health';
 import { getTopStations } from '@/engine/radio/stationService';
-import { isSupabaseConfigured } from '@/integrations/supabase/client';
 
 type TabId = 'stations' | 'favorites' | 'history' | 'settings';
 
@@ -36,7 +34,6 @@ interface StationsPanelProps {
 export function StationsPanel({ onClose }: StationsPanelProps) {
   const [activeTab, setActiveTab] = useState<TabId>('stations');
   const [selectedAmbience, setSelectedAmbience] = useState<AmbienceType | null>(null);
-  const [hasSynced, setHasSynced] = useState(false);
   const hasLoadedTopStations = useRef(false);
 
   // Geo state from dedicated store
@@ -144,45 +141,6 @@ export function StationsPanel({ onClose }: StationsPanelProps) {
       });
     }
   }, [stations, topStations, selectedCountry]);
-
-
-  // Sync embeddings when stations are loaded - batched to reduce TBT
-  useEffect(() => {
-    const stationsToSync = selectedCountry ? stations : topStations;
-    if (!isSupabaseConfigured) return;
-
-    if (stationsToSync.length > 0 && !hasSynced) {
-      const scheduleTask = window.requestIdleCallback || ((cb: () => void) => setTimeout(cb, 4000));
-      
-      scheduleTask(() => {
-        // Process in batches to avoid blocking main thread
-        const batchSize = 10;
-        const enriched: ReturnType<typeof enrichStationSync>[] = [];
-        let index = 0;
-        
-        const processBatch = () => {
-          const end = Math.min(index + batchSize, stationsToSync.length);
-          for (; index < end; index++) {
-            enriched.push(enrichStationSync(stationsToSync[index]));
-          }
-          
-          if (index < stationsToSync.length) {
-            // Yield to main thread, then continue
-            setTimeout(processBatch, 0);
-          } else {
-            // All done, sync embeddings
-            syncEmbeddings(enriched).then((didSync) => {
-              if (!didSync) return;
-              setHasSynced(true);
-              console.log('[StationsPanel] Embeddings synced');
-            });
-          }
-        };
-        
-        processBatch();
-      });
-    }
-  }, [stations, topStations, hasSynced, selectedCountry]);
 
   // Handle ambience selection
   const handleAmbienceSelect = useCallback(async (ambience: AmbienceType) => {

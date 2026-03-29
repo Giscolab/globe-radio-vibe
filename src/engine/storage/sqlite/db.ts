@@ -1,268 +1,106 @@
-// Engine - SQLite WASM Database Manager
 import { logger } from '../../core/logger';
+import {
+  createSqliteWorkerClient,
+  type SqliteWorkerClient,
+} from '../../../worker/sqlite-opfs-init';
 
-import sqlite3InitModule from "@sqlite.org/sqlite-wasm";
-import migrationsSql from './migrations.sql?raw';
-import seedStations from './seed/stations.json';
+export type StorageMode = 'opfs' | 'unknown';
 
-export type SqliteDatabase = {
-  exec: (sql: string, params?: unknown[]) => void;
-  selectObjects: <T>(sql: string, params?: unknown[]) => T[];
-  selectValue: (sql: string, params?: unknown[]) => unknown;
-  changes: () => number;
-  close: () => void;
-};
-
-export type StorageMode = 'opfs' | 'memory';
-
-type SqliteExecOptions<Row> = {
-  sql: string;
-  bind?: unknown[];
-  rowMode?: 'object' | 'array';
-  callback?: (row: Row) => boolean | void;
-};
-
-type SqliteWasmDb = {
-  exec: (options: string | SqliteExecOptions<unknown>) => void;
-  changes: () => number;
-  close: () => void;
-};
-
-type SqliteWasmModule = {
-  oo1: {
-    DB: new (filename: string) => SqliteWasmDb;
-    OpfsDb?: new (filename: string) => SqliteWasmDb;
-  };
-  capi?: {
-    sqlite3_vfs_find?: (name: string) => unknown;
-  };
-};
-
-type SqliteInitModuleOptions = {
-  printErr?: (...args: unknown[]) => void;
-};
-
-interface DatabaseState {
-  db: SqliteDatabase | null;
-  mode: StorageMode;
-  initialized: boolean;
+export interface SqliteDatabase {
+  exec(sql: string, params?: unknown[]): Promise<void>;
+  selectObjects<T>(sql: string, params?: unknown[]): Promise<T[]>;
+  selectValue<T = unknown>(sql: string, params?: unknown[]): Promise<T | null>;
+  close(): Promise<void>;
 }
+
+type InitResult = {
+  mode: 'opfs';
+  stationCount: number;
+  localSeedCount: number;
+  worldSeedCount: number;
+  worldDatasetVersion: string | null;
+};
+
+type DatabaseState = {
+  client: SqliteWorkerClient | null;
+  db: SqliteDatabase | null;
+  initialized: boolean;
+  mode: StorageMode;
+  initPromise: Promise<SqliteDatabase> | null;
+};
 
 const state: DatabaseState = {
+  client: null,
   db: null,
-  mode: 'memory',
   initialized: false,
+  mode: 'unknown',
+  initPromise: null,
 };
 
-const DB_NAME = 'globe-radio.sqlite3';
+function createDatabaseFacade(client: SqliteWorkerClient): SqliteDatabase {
+  return {
+    async exec(sql: string, params?: unknown[]) {
+      await client.request('exec', { sql, bind: params });
+    },
 
-function isMainThreadBrowser(): boolean {
-  return typeof document !== 'undefined';
+    async selectObjects<T>(sql: string, params?: unknown[]) {
+      return client.request<T[]>('query', { sql, bind: params });
+    },
+
+    async selectValue<T = unknown>(sql: string, params?: unknown[]) {
+      return client.request<T | null>('value', { sql, bind: params });
+    },
+
+    async close() {
+      await client.request('close');
+    },
+  };
 }
 
-async function detectOPFS(): Promise<boolean> {
-  try {
-    if (isMainThreadBrowser()) {
-      logger.info('Storage', 'OPFS persistence requires a worker thread. Using memory-backed SQLite in the UI thread.');
-      return false;
-    }
-
-    if (!navigator.storage?.getDirectory) return false;
-    const root = await navigator.storage.getDirectory();
-    const testHandle = await root.getFileHandle('__opfs_test__', { create: true });
-    await root.removeEntry('__opfs_test__');
-    return true;
-  } catch (error) {
-    logger.info('Storage', 'OPFS not available, falling back to memory.');
-    return false;
-  }
-}
-
-let sqlitePromise: Promise<SqliteWasmModule> | null = null;
-
-async function loadSqliteWasm(): Promise<SqliteWasmModule> {
-  if (!sqlitePromise) {
-    const initModule = sqlite3InitModule as unknown as (
-      options?: SqliteInitModuleOptions
-    ) => Promise<SqliteWasmModule>;
-
-    sqlitePromise = initModule({
-      printErr: (...args: unknown[]) => {
-        const message = args.join(' ');
-
-        if (message.includes('Ignoring inability to install OPFS sqlite3_vfs')) {
-          logger.debug('Storage', 'SQLite OPFS VFS is unavailable on the main thread.');
-          return;
-        }
-
-        console.warn(...args);
-      },
-    });
-  }
-  return sqlitePromise;
+function resetState(): void {
+  state.client = null;
+  state.db = null;
+  state.initialized = false;
+  state.mode = 'unknown';
+  state.initPromise = null;
 }
 
 export async function initDatabase(): Promise<SqliteDatabase> {
-  if (state.initialized && state.db) return state.db;
-
-  logger.info('Storage', 'Initializing SQLite WASM...');
-
-  const sqlite3 = await loadSqliteWasm();
-  const opfsAvailable = await detectOPFS();
-  const opfsVfsAvailable = Boolean(sqlite3.capi?.sqlite3_vfs_find?.('opfs'));
-
-  let db: SqliteWasmDb;
-
-  if (opfsAvailable && sqlite3.oo1.OpfsDb && opfsVfsAvailable) {
-    try {
-      logger.info('Storage', 'Using OPFS storage');
-      db = new sqlite3.oo1.OpfsDb(DB_NAME);
-      state.mode = 'opfs';
-    } catch (error) {
-      logger.warn('Storage', 'OPFS init failed, falling back to memory:', error);
-      db = new sqlite3.oo1.DB(':memory:');
-      state.mode = 'memory';
-    }
-  } else {
-    if (opfsAvailable && !opfsVfsAvailable) {
-      logger.warn('Storage', 'OPFS is available but sqlite3 opfs VFS is missing. Falling back to memory.');
-    }
-    logger.info('Storage', 'Using in-memory storage (OPFS not available)');
-    db = new sqlite3.oo1.DB(':memory:');
-    state.mode = 'memory';
+  if (state.db && state.initialized) {
+    return state.db;
   }
 
-  const wrappedDb: SqliteDatabase = {
-    exec: (sql: string, params?: unknown[]) => {
-      if (params?.length) db.exec({ sql, bind: params });
-      else db.exec(sql);
-    },
-    selectObjects: <T>(sql: string, params?: unknown[]): T[] => {
-      const result: T[] = [];
-      const options: SqliteExecOptions<T> = {
-        sql,
-        rowMode: 'object',
-        callback: (row: T) => { result.push(row); }
-      };
-      if (params?.length) options.bind = params;
-      db.exec(options);
-      return result;
-    },
-    selectValue: (sql: string, params?: unknown[]): unknown => {
-      let value: unknown = null;
-      const options: SqliteExecOptions<unknown[]> = {
-        sql,
-        rowMode: 'array',
-        callback: (row: unknown[]) => {
-          value = row[0];
-          return false;
-        }
-      };
-      if (params?.length) options.bind = params;
-      db.exec(options);
-      return value;
-    },
-    changes: () => db.changes(),
-    close: () => db.close(),
-  };
+  if (!state.initPromise) {
+    state.initPromise = (async () => {
+      logger.info('Storage', 'Initializing SQLite OPFS worker...');
 
-  applyMigrations(wrappedDb);
-  seedIfEmpty(wrappedDb);
+      const client = createSqliteWorkerClient();
+      const db = createDatabaseFacade(client);
 
-  state.db = wrappedDb;
-  state.initialized = true;
+      try {
+        const initResult = await client.request<InitResult>('init');
 
-  logger.info('Storage', `Database initialized (mode: ${state.mode})`);
-  return wrappedDb;
-}
+        state.client = client;
+        state.db = db;
+        state.initialized = true;
+        state.mode = initResult.mode;
 
-function applyMigrations(db: SqliteDatabase): void {
-  try {
-    db.exec(migrationsSql);
-    logger.info('Storage', 'Migrations applied');
-  } catch (error) {
-    logger.error('Storage', 'Failed to apply migrations:', error);
-    throw error;
-  }
-}
+        logger.info(
+          'Storage',
+          `Database initialized (${initResult.stationCount} stations, local=${initResult.localSeedCount}, world=${initResult.worldSeedCount})`
+        );
 
-type SeedStation = {
-  id: string;
-  name: string;
-  url: string;
-  urlResolved?: string;
-  homepage?: string;
-  favicon?: string;
-  country: string;
-  countryCode: string;
-  state?: string;
-  language?: string;
-  codec?: string;
-  bitrate?: number;
-  votes?: number;
-  clickCount?: number;
-  clickTrend?: number;
-  geo?: { lat: number; lon: number };
-  tags?: string[];
-  lastCheckOk?: boolean;
-  lastCheckTime?: string;
-};
-
-function seedIfEmpty(db: SqliteDatabase): void {
-  const count = Number(db.selectValue('SELECT COUNT(*) FROM stations')) || 0;
-  if (count > 0) return;
-
-  if (state.mode === 'opfs') {
-    logger.info('Storage', 'OPFS active - skipping seed data');
-    return;
+        return db;
+      } catch (error) {
+        await client.terminate();
+        resetState();
+        logger.error('Storage', 'Failed to initialize SQLite OPFS worker', error);
+        throw error;
+      }
+    })();
   }
 
-  if (!Array.isArray(seedStations) || seedStations.length === 0) {
-    logger.warn('Storage', 'Seed file is empty, skipping seed');
-    return;
-  }
-
-  db.exec('BEGIN TRANSACTION');
-  try {
-    for (const station of seedStations as SeedStation[]) {
-      db.exec(
-        `INSERT INTO stations (
-          id, name, url, url_resolved, homepage, favicon,
-          country, country_code, state, language, language_codes,
-          codec, bitrate, votes, click_count, click_trend,
-          lat, lon, tags, last_check_ok, last_check_time, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-        [
-          station.id,
-          station.name,
-          station.url,
-          station.urlResolved ?? null,
-          station.homepage ?? null,
-          station.favicon ?? null,
-          station.country,
-          station.countryCode,
-          station.state ?? null,
-          station.language ?? null,
-          null,
-          station.codec ?? null,
-          station.bitrate ?? 0,
-          station.votes ?? 0,
-          station.clickCount ?? 0,
-          station.clickTrend ?? 0,
-          station.geo?.lat ?? null,
-          station.geo?.lon ?? null,
-          station.tags?.join(',') ?? null,
-          station.lastCheckOk ? 1 : 0,
-          station.lastCheckTime ?? null,
-        ]
-      );
-    }
-    db.exec('COMMIT');
-    logger.info('Storage', `Seeded ${seedStations.length} stations`);
-  } catch (error) {
-    db.exec('ROLLBACK');
-    logger.error('Storage', 'Failed to seed stations:', error);
-  }
+  return state.initPromise;
 }
 
 export function getDatabase(): SqliteDatabase | null {
@@ -278,75 +116,75 @@ export function isInitialized(): boolean {
 }
 
 export async function closeDatabase(): Promise<void> {
-  if (state.db) {
-    state.db.close();
-    state.db = null;
-    state.initialized = false;
-    logger.info('Storage', 'Database closed');
+  if (!state.client || !state.db) {
+    resetState();
+    return;
+  }
+
+  try {
+    await state.db.close();
+  } finally {
+    await state.client.terminate();
+    resetState();
+    logger.info('Storage', 'Database worker closed');
   }
 }
 
 export async function deleteDatabase(): Promise<void> {
-  await closeDatabase();
-  if (state.mode === 'opfs') {
+  if (!state.client) {
+    const client = createSqliteWorkerClient();
     try {
-      const root = await navigator.storage.getDirectory();
-      await root.removeEntry(DB_NAME);
-      logger.info('Storage', 'Database file deleted from OPFS');
-    } catch (error) {
-      logger.warn('Storage', 'Failed to delete OPFS database:', error);
+      await client.request('deleteDatabase');
+    } finally {
+      await client.terminate();
     }
+    resetState();
+    return;
+  }
+
+  try {
+    await state.client.request('deleteDatabase');
+  } finally {
+    await state.client.terminate();
+    resetState();
+    logger.info('Storage', 'Database deleted from OPFS');
   }
 }
 
 export async function vacuumDatabase(): Promise<void> {
-  const db = getDatabase();
-  if (!db) throw new Error('Database not initialized');
+  if (!state.client) {
+    throw new Error('Database not initialized');
+  }
+
   logger.info('Storage', 'Running VACUUM...');
-  const start = performance.now();
-  db.exec('VACUUM');
-  logger.info('Storage', `VACUUM completed in ${Math.round(performance.now() - start)}ms`);
+  await state.client.request('vacuum');
 }
 
 export async function checkIntegrity(): Promise<{ ok: boolean; errors: string[] }> {
-  const db = getDatabase();
-  if (!db) throw new Error('Database not initialized');
-  logger.info('Storage', 'Running integrity check...');
-  const results = db.selectObjects<{ integrity_check: string }>('PRAGMA integrity_check');
-  const errors = results.filter(r => r.integrity_check !== 'ok').map(r => r.integrity_check);
-  const ok = errors.length === 0;
-  if (ok) logger.info('Storage', 'Integrity check passed');
-  else logger.error('Storage', 'Integrity check failed:', errors);
-  return { ok, errors };
+  if (!state.client) {
+    throw new Error('Database not initialized');
+  }
+
+  return state.client.request<{ ok: boolean; errors: string[] }>('integrity');
 }
 
 export async function analyzeDatabase(): Promise<void> {
-  const db = getDatabase();
-  if (!db) throw new Error('Database not initialized');
-  logger.info('Storage', 'Running ANALYZE...');
-  const start = performance.now();
-  db.exec('ANALYZE');
-  logger.info('Storage', `ANALYZE completed in ${Math.round(performance.now() - start)}ms`);
+  if (!state.client) {
+    throw new Error('Database not initialized');
+  }
+
+  await state.client.request('analyze');
 }
 
-export async function getDatabaseStats() {
-  const db = getDatabase();
-  if (!db) throw new Error('Database not initialized');
+export async function getDatabaseStats(): Promise<{
+  sizeBytes: number;
+  pageCount: number;
+  pageSize: number;
+  tables: Array<{ name: string; rowCount: number }>;
+}> {
+  if (!state.client) {
+    throw new Error('Database not initialized');
+  }
 
-  const pageCount = db.selectValue('PRAGMA page_count') as number;
-  const pageSize = db.selectValue('PRAGMA page_size') as number;
-  const sizeBytes = pageCount * pageSize;
-
-  const tableNames = ['stations', 'favorites', 'play_history', 'settings', 'ai_signals'];
-  const tables = tableNames.map(name => {
-    try {
-      const count = db.selectValue(`SELECT COUNT(*) FROM ${name}`) as number;
-      return { name, rowCount: count };
-    } catch {
-      return { name, rowCount: 0 };
-    }
-  });
-
-  logger.info('Storage', `Database stats: ${(sizeBytes / 1024).toFixed(1)} KB, ${pageCount} pages`);
-  return { sizeBytes, pageCount, pageSize, tables };
+  return state.client.request('stats');
 }

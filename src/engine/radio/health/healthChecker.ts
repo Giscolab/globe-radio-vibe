@@ -1,6 +1,3 @@
-// Engine - Health Checker: ping stations via backend proxy
-
-import { isSupabaseConfigured, supabase } from '@/integrations/supabase/client';
 import { createLogger } from '@/engine/core/logger';
 
 const log = createLogger('HealthChecker');
@@ -13,142 +10,108 @@ export interface StationHealth {
   statusCode?: number;
 }
 
-interface HealthCheckResponse {
-  results: Array<{
-    id: string;
-    ok: boolean;
-    latency: number | null;
-    lastChecked: number;
-    error?: string;
-    statusCode?: number;
-  }>;
-  error?: string;
+async function probeStation(url: string, timeoutMs: number): Promise<StationHealth> {
+  const controller = new AbortController();
+  const startedAt = performance.now();
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    await fetch(url, {
+      method: 'HEAD',
+      mode: 'no-cors',
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+
+    return {
+      ok: true,
+      latency: Math.round(performance.now() - startedAt),
+      lastChecked: Date.now(),
+    };
+  } catch (error) {
+    log.debug(`Health probe unavailable for ${url}: ${error}`);
+    return {
+      ok: true,
+      latency: null,
+      lastChecked: Date.now(),
+      error: 'Health check unavailable',
+    };
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
-/**
- * Check multiple stations health via backend proxy (bypasses CORS)
- */
 export async function checkStationsHealthBatch(
   stations: Array<{ id: string; url: string }>,
   timeoutMs = 5000
 ): Promise<Map<string, StationHealth>> {
   const results = new Map<string, StationHealth>();
 
-  if (stations.length === 0) return results;
-  if (!isSupabaseConfigured) {
-    for (const station of stations) {
-      results.set(station.id, {
-        ok: true,
-        latency: null,
-        lastChecked: Date.now(),
-        error: 'Health check unavailable',
-      });
-    }
+  if (stations.length === 0) {
     return results;
   }
 
-  try {
-    const { data, error } = await supabase.functions.invoke<HealthCheckResponse>('check-station-health', {
-      body: { urls: stations, timeoutMs }
-    });
+  const checks = await Promise.all(
+    stations.map(async (station) => ({
+      id: station.id,
+      health: await probeStation(station.url, timeoutMs),
+    }))
+  );
 
-    if (error) {
-      log.warn(`Proxy error: ${error.message}`);
-      // Mark all as unknown on proxy failure
-      for (const station of stations) {
-        results.set(station.id, {
-          ok: true, // Assume ok to not block playback
-          latency: null,
-          lastChecked: Date.now(),
-          error: 'Health check unavailable',
-        });
-      }
-      return results;
-    }
-
-    if (data?.results) {
-      for (const result of data.results) {
-        results.set(result.id, {
-          ok: result.ok,
-          latency: result.latency,
-          lastChecked: result.lastChecked,
-          error: result.error,
-          statusCode: result.statusCode,
-        });
-      }
-    }
-
-  } catch (err) {
-    log.debug(`Batch check failed: ${err}`);
-    // Graceful fallback - assume stations are ok
-    for (const station of stations) {
-      results.set(station.id, {
-        ok: true,
-        latency: null,
-        lastChecked: Date.now(),
-        error: 'Health check unavailable',
-      });
-    }
+  for (const check of checks) {
+    results.set(check.id, check.health);
   }
 
   return results;
 }
 
-/**
- * Check single station health (uses batch internally)
- */
 export async function checkStationHealth(
   url: string,
   timeoutMs = 5000,
   stationId = 'unknown'
 ): Promise<StationHealth> {
   const results = await checkStationsHealthBatch([{ id: stationId, url }], timeoutMs);
-  return results.get(stationId) || {
-    ok: true,
-    latency: null,
-    lastChecked: Date.now(),
-    error: 'Health check unavailable',
-  };
+  return (
+    results.get(stationId) || {
+      ok: true,
+      latency: null,
+      lastChecked: Date.now(),
+      error: 'Health check unavailable',
+    }
+  );
 }
 
-/**
- * Get health status tier based on latency
- */
 export function getHealthTier(health: StationHealth): 'healthy' | 'slow' | 'unstable' | 'offline' {
   if (!health.ok) {
     return 'offline';
   }
-  
+
   if (health.latency === null) {
     return 'unstable';
   }
-  
+
   if (health.latency < 200) {
     return 'healthy';
   }
-  
+
   if (health.latency < 800) {
     return 'slow';
   }
-  
+
   return 'unstable';
 }
 
-/**
- * Check multiple URLs and return the first healthy one
- */
 export async function findHealthyUrl(
-  urls: string[], 
+  urls: string[],
   timeoutMs = 5000
 ): Promise<{ url: string; health: StationHealth } | null> {
-  const stations = urls.map((url, i) => ({ id: `url_${i}`, url }));
-  const results = await checkStationsHealthBatch(stations, timeoutMs);
-  
-  for (let i = 0; i < urls.length; i++) {
-    const health = results.get(`url_${i}`);
-    if (health?.ok) {
-      return { url: urls[i], health };
+  for (let index = 0; index < urls.length; index += 1) {
+    const url = urls[index];
+    const health = await checkStationHealth(url, timeoutMs, `url_${index}`);
+    if (health.ok) {
+      return { url, health };
     }
   }
+
   return null;
 }

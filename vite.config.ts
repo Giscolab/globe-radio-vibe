@@ -18,6 +18,13 @@ export default defineConfig(({ mode }) => ({
     }
   },
 
+  preview: {
+    headers: {
+      "Cross-Origin-Embedder-Policy": "require-corp",
+      "Cross-Origin-Opener-Policy": "same-origin"
+    }
+  },
+
   optimizeDeps: {
     exclude: ["@sqlite.org/sqlite-wasm"]
   },

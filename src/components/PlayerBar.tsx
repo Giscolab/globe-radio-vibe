@@ -1,4 +1,4 @@
-import { Play, Pause, Volume2, VolumeX, Radio, AlertCircle, WifiOff, Shield, RotateCw } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, Radio, AlertCircle, WifiOff, RotateCw } from 'lucide-react';
 import { usePlayer } from '@/hooks/usePlayer';
 import { useRadioStore } from '@/stores/radio';
 import { useSettingsStore } from '@/stores/settings.store';
@@ -9,8 +9,7 @@ import { QualityBadge } from './QualityBadge';
 import { StationHealthBadge } from './StationHealthBadge';
 import { enrichStationSync } from '@/engine/radio/enrichment/stationEnricher';
 import { getHealthTier } from '@/engine/radio/health';
-import { needsProxy, isForceProxyEnabled } from '@/engine/radio/utils/httpsUpgrade';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { needsProxy } from '@/engine/radio/utils/httpsUpgrade';
 import { proxify } from '@/utils/image';
 
 
@@ -54,10 +53,7 @@ export function PlayerBar() {
   const health = currentStation ? stationHealth[currentStation.id] : null;
   const isUnstable = health && !health.ok;
   
-  // Check if station uses proxy (force proxy or needs proxy)
-  const isProxied = currentStation?.url 
-    ? (isForceProxyEnabled() && !currentStation.url.startsWith('https://')) || needsProxy(currentStation.url) 
-    : false;
+  const hasSecureOriginIssue = currentStation?.url ? needsProxy(currentStation.url) : false;
   const faviconUrl = proxify(currentStation?.favicon);
 
   const statusLabel = (() => {
@@ -118,18 +114,10 @@ export function PlayerBar() {
                 {health && (
                   <StationHealthBadge health={health} size="sm" />
                 )}
-                {isProxied && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 text-xs">
-                        <Shield className="w-3 h-3" />
-                        <span className="hidden sm:inline">Proxy</span>
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Flux sécurisé via proxy HTTPS</p>
-                    </TooltipContent>
-                  </Tooltip>
+                {hasSecureOriginIssue && (
+                  <span className="inline-flex items-center gap-1 rounded bg-amber-500/20 px-1.5 py-0.5 text-xs text-amber-500">
+                    HTTP only
+                  </span>
                 )}
               </div>
               <p className="text-sm text-muted-foreground truncate">

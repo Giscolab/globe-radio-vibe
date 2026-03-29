@@ -19,6 +19,39 @@ function getNextServer(): string {
   return server;
 }
 
+function isValidUrl(url: string | undefined | null): boolean {
+  if (!url) return false;
+
+  try {
+    new URL(url);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function sanitizeOptionalUrl(url: string | undefined | null): string | undefined {
+  if (!isValidUrl(url)) {
+    return undefined;
+  }
+
+  return url ?? undefined;
+}
+
+function normalizeTimestamp(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+
+  const normalized = value.includes('T') ? value : value.replace(' ', 'T');
+  const withTimezone = /Z$|[+-]\d{2}:\d{2}$/.test(normalized) ? normalized : `${normalized}Z`;
+  const timestamp = Date.parse(withTimezone);
+
+  if (Number.isNaN(timestamp)) {
+    return undefined;
+  }
+
+  return new Date(timestamp).toISOString();
+}
+
 /**
  * Upgrade HTTP URL to HTTPS if possible
  * Uses the comprehensive httpsUpgrade utility
@@ -43,19 +76,17 @@ function normalizeStation(raw: z.infer<typeof RadioBrowserStationSchema>): Stati
   // Prefer urlResolved (direct stream), upgrade to HTTPS when possible
   const rawUrl = raw.url_resolved || raw.url;
   const upgradedUrl = upgradeToHttps(rawUrl);
-  
-  // Also upgrade the original URL
-  const originalUrl = upgradeToHttps(raw.url);
-  
-  // Upgrade favicon to HTTPS
-  const favicon = raw.favicon ? upgradeToHttps(raw.favicon) : undefined;
+
+  const favicon = sanitizeOptionalUrl(raw.favicon ? upgradeToHttps(raw.favicon) : undefined);
+  const homepage = sanitizeOptionalUrl(raw.homepage);
+  const urlResolved = sanitizeOptionalUrl(raw.url_resolved ? upgradeToHttps(raw.url_resolved) : undefined);
   
   return {
     id: raw.stationuuid,
     name: raw.name,
     url: upgradedUrl,
-    urlResolved: raw.url_resolved ? upgradeToHttps(raw.url_resolved) : undefined,
-    homepage: raw.homepage || undefined,
+    urlResolved,
+    homepage,
     favicon,
     country: raw.country,
     countryCode: raw.countrycode || undefined,
@@ -68,11 +99,35 @@ function normalizeStation(raw: z.infer<typeof RadioBrowserStationSchema>): Stati
     clickCount: raw.clickcount || 0,
     clickTrend: raw.clicktrend || 0,
     lastCheckOk: raw.lastcheckok === 1,
-    lastCheckTime: raw.lastchecktime || undefined,
+    lastCheckTime: normalizeTimestamp(raw.lastchecktime),
     geo: raw.geo_lat != null && raw.geo_long != null
       ? { lat: raw.geo_lat, lon: raw.geo_long }
       : undefined,
   };
+}
+
+export function dedupeStations(stations: Station[]): Station[] {
+  const unique = new Map<string, Station>();
+
+  for (const station of stations) {
+    if (!station.id) {
+      continue;
+    }
+
+    const previous = unique.get(station.id);
+    if (!previous) {
+      unique.set(station.id, station);
+      continue;
+    }
+
+    const previousPopularity = (previous.clickCount ?? 0) + (previous.votes ?? 0);
+    const nextPopularity = (station.clickCount ?? 0) + (station.votes ?? 0);
+    if (nextPopularity >= previousPopularity) {
+      unique.set(station.id, station);
+    }
+  }
+
+  return Array.from(unique.values()).sort((left, right) => left.id.localeCompare(right.id));
 }
 
 export interface RadioBrowserSearchParams {
@@ -154,8 +209,9 @@ export async function fetchStationsByCountry(
       }
     }
     
-    logger.info('RadioBrowser', `Fetched ${stations.length} stations for ${countryCode}`);
-    return stations;
+    const deduped = dedupeStations(stations);
+    logger.info('RadioBrowser', `Fetched ${deduped.length} stations for ${countryCode}`);
+    return deduped;
   } catch (error) {
     logger.error('RadioBrowser', `Failed to fetch stations for ${countryCode}: ${error}`);
     return [];
@@ -195,8 +251,9 @@ export async function searchStations(
       }
     }
     
-    logger.info('RadioBrowser', `Search returned ${stations.length} stations`);
-    return stations;
+    const deduped = dedupeStations(stations);
+    logger.info('RadioBrowser', `Search returned ${deduped.length} stations`);
+    return deduped;
   } catch (error) {
     logger.error('RadioBrowser', `Search failed: ${error}`);
     return [];
@@ -256,8 +313,9 @@ export async function fetchAllStations(options?: {
     }
   }
 
-  logger.info('RadioBrowser', `Total stations fetched: ${stations.length}`);
-  return stations;
+  const deduped = dedupeStations(stations);
+  logger.info('RadioBrowser', `Total stations fetched: ${deduped.length}`);
+  return deduped;
 }
 
 export async function getStationById(id: string): Promise<Station | null> {

@@ -1,6 +1,5 @@
 // Engine - Database Import
 import { initDatabase, closeDatabase, getStorageMode } from '../sqlite/db';
-import { runMigrations } from '../sqlite/migrations';
 import { logger } from '../../core/logger';
 import { StationSchema, Station } from '../../types/radio';
 import { getSqliteRepository } from '../sqlite/stationRepository';
@@ -73,8 +72,7 @@ async function importBinaryDatabase(file: File): Promise<void> {
 
   // Reinitialize database
   await initDatabase();
-  const db = await initDatabase();
-  await runMigrations(db);
+  await initDatabase();
 
   logger.info('Import', 'Binary database restored to OPFS');
 }
@@ -92,7 +90,7 @@ async function importTable(
         try {
           const station = validateStation(row);
           if (station) {
-            repo.upsert(station);
+            await repo.upsert(station);
             result.stationsImported++;
           }
         } catch (error) {
@@ -104,7 +102,7 @@ async function importTable(
     case 'favorites':
       for (const row of rows) {
         if (row.station_id && typeof row.station_id === 'string') {
-          repo.addFavorite(row.station_id);
+          await repo.addFavorite(row.station_id);
           result.favoritesImported++;
         }
       }
@@ -113,7 +111,7 @@ async function importTable(
     case 'play_history':
       for (const row of rows) {
         if (row.station_id && typeof row.station_id === 'string') {
-          repo.recordPlay(row.station_id, (row.duration_seconds as number) || 0);
+          await repo.recordPlay(row.station_id, (row.duration_seconds as number) || 0);
           result.historyImported++;
         }
       }
@@ -124,9 +122,9 @@ async function importTable(
         if (row.key && typeof row.key === 'string' && row.value) {
           try {
             const value = JSON.parse(row.value as string);
-            repo.setSetting(row.key, value);
+            await repo.setSetting(row.key, value);
           } catch {
-            repo.setSetting(row.key, row.value);
+            await repo.setSetting(row.key, row.value);
           }
         }
       }

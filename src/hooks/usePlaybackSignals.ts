@@ -26,24 +26,28 @@ export function usePlaybackSignals() {
         recordPlay(previous.currentStation, durationSeconds);
 
         if (durationSeconds > 0 && durationSeconds < SKIP_THRESHOLD_SECONDS) {
-          try {
-            getSqliteRepository().recordSignal('skip', previous.currentStation.id, { durationSeconds });
-            aiEngine.invalidateCache();
-          } catch (error) {
-            console.warn('Failed to record skip signal:', error);
-          }
+          void getSqliteRepository()
+            .recordSignal('skip', previous.currentStation.id, { durationSeconds })
+            .then(() => {
+              aiEngine.invalidateCache();
+            })
+            .catch((error) => {
+              console.warn('Failed to record skip signal:', error);
+            });
         }
       }
 
       if (state.status === 'error' && previous.status !== 'error' && state.currentStation) {
-        try {
-          getSqliteRepository().recordSignal('error', state.currentStation.id, {
+        void getSqliteRepository()
+          .recordSignal('error', state.currentStation.id, {
             details: state.error ?? 'Erreur de lecture',
+          })
+          .then(() => {
+            aiEngine.invalidateCache();
+          })
+          .catch((error) => {
+            console.warn('Failed to record error signal:', error);
           });
-          aiEngine.invalidateCache();
-        } catch (error) {
-          console.warn('Failed to record error signal:', error);
-        }
       }
 
       lastStateRef.current = state;

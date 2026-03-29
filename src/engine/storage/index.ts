@@ -14,8 +14,6 @@ export {
   type StorageMode,
 } from './sqlite/db';
 
-export { runMigrations, getMigrationVersion } from './sqlite/migrations';
-
 export {
   SqliteStationRepository,
   getSqliteRepository,
@@ -36,7 +34,6 @@ export {
 
 // Storage initialization helper
 import { initDatabase } from './sqlite/db';
-import { runMigrations } from './sqlite/migrations';
 import { logger } from '../core/logger';
 
 let storageReady = false;
@@ -46,8 +43,7 @@ export async function initStorage(): Promise<void> {
 
   try {
     logger.info('Storage', 'Initializing storage...');
-    const db = await initDatabase();
-    await runMigrations(db);
+    await initDatabase();
     storageReady = true;
     logger.info('Storage', 'Storage initialized successfully');
   } catch (error) {

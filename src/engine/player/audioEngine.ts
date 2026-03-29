@@ -5,7 +5,7 @@ import { Station } from '../types/radio';
 import { playerMetrics } from './metrics';
 import { audioAnalyzer } from '../audio/audioAnalyzer';
 import { healthHistory } from '../radio/health';
-import { buildCandidateUrls, isHlsStream, browserSupportsHls, needsProxy } from '../radio/utils/httpsUpgrade';
+import { buildCandidateUrls, isHlsStream, browserSupportsHls } from '../radio/utils/httpsUpgrade';
 import { retryWithBackoff } from './retryPolicy';
 
 // =======================
@@ -13,8 +13,6 @@ import { retryWithBackoff } from './retryPolicy';
 // =======================
 
 const PLAYBACK_START_TIMEOUT = 8000;
-const PROXY_TO_DIRECT_SWITCH_DELAY = 6000;
-
 // =======================
 // SAFE MODE
 // =======================
@@ -43,7 +41,7 @@ export interface AudioEngineState {
   muted: boolean;
   error: string | null;
   currentUrl: string | null;
-  urlType: 'direct' | 'proxy' | 'hls' | null;
+  urlType: 'direct' | 'hls' | null;
   candidateIndex: number;
   totalCandidates: number;
 }
@@ -57,7 +55,7 @@ type HowlerInternal = Howl & { _sounds?: HowlerSound[] };
 // =======================
 // Invariants:
 // 1) audioEngine is the single source of truth for playback state (stores only mirror).
-// 2) Never drop a playing stream without a valid fallback (proxy <-> direct guarded).
+// 2) Never drop a playing stream without a valid fallback candidate.
 // 3) Only one transition at a time (guarded by transitionToken / isTransitioning).
 
 class AudioEngine {
@@ -78,7 +76,6 @@ class AudioEngine {
   private playStartTime: number | null = null;
   private analyzerConnected = false;
   private playbackTimeoutId: ReturnType<typeof setTimeout> | null = null;
-  private proxySwitchTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private analyzerConnectTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private suppressReconnect = false;
   private reconnectInProgress = false;
@@ -114,15 +111,9 @@ class AudioEngine {
   // HELPERS
   // =======================
 
-  private getUrlType(url: string): 'direct' | 'proxy' | 'hls' {
-    if (url.includes('audio-stream-proxy')) return 'proxy';
+  private getUrlType(url: string): 'direct' | 'hls' {
     if (isHlsStream(url)) return 'hls';
     return 'direct';
-  }
-
-  private getDirectUrl(station: Station): string | null {
-    const urls = [station.urlResolved, station.url].filter(Boolean) as string[];
-    return urls.find(u => !u.includes('audio-stream-proxy')) ?? null;
   }
 
   // =======================
@@ -179,13 +170,6 @@ class AudioEngine {
     }
   }
 
-  private clearProxySwitchTimeout() {
-    if (this.proxySwitchTimeoutId) {
-      clearTimeout(this.proxySwitchTimeoutId);
-      this.proxySwitchTimeoutId = null;
-    }
-  }
-
   private clearAnalyzerConnectTimeout() {
     if (this.analyzerConnectTimeoutId) {
       clearTimeout(this.analyzerConnectTimeoutId);
@@ -195,7 +179,6 @@ class AudioEngine {
 
   private stopInternal(): void {
     this.clearPlaybackTimeout();
-    this.clearProxySwitchTimeout();
     this.clearAnalyzerConnectTimeout();
     this.recordPlayTime();
     this.disconnectAnalyzer();
@@ -204,7 +187,6 @@ class AudioEngine {
 
   private stopCore(): void {
     this.clearPlaybackTimeout();
-    this.clearProxySwitchTimeout();
     this.clearAnalyzerConnectTimeout();
     this.suppressReconnect = this.howl !== null;
 
@@ -233,7 +215,6 @@ class AudioEngine {
   private async tryPlayUrl(url: string, station: Station): Promise<void> {
     return new Promise((resolve, reject) => {
       this.clearPlaybackTimeout();
-      this.clearProxySwitchTimeout();
 
       if (this.howl) {
         this.howl.unload();
@@ -274,10 +255,6 @@ class AudioEngine {
 
           this.clearAnalyzerConnectTimeout();
           this.analyzerConnectTimeoutId = setTimeout(() => this.connectAnalyzer(), 500);
-
-          if (urlType === 'proxy') {
-            this.scheduleProxySwitch(station);
-          }
 
           resolve();
         }),
@@ -334,31 +311,6 @@ class AudioEngine {
         this.reconnectInProgress = false;
       }
     }
-  }
-
-  private scheduleProxySwitch(station: Station) {
-    this.clearProxySwitchTimeout();
-
-    this.proxySwitchTimeoutId = setTimeout(() => {
-      if (
-        this.state.status !== 'playing' ||
-        this.state.urlType !== 'proxy' ||
-        this.state.currentStation?.id !== station.id
-      ) return;
-
-      const direct = this.getDirectUrl(station);
-      if (!direct) return;
-      if (needsProxy(direct)) return;
-
-      const currentProxyUrl = this.state.currentUrl;
-      if (!currentProxyUrl) return;
-
-      logger.debug('AudioEngine', `Switching ${station.name} from proxy to direct`);
-      this.tryPlayUrl(direct, station).catch(() => {
-        if (this.state.currentStation?.id !== station.id) return;
-        this.tryPlayUrl(currentProxyUrl, station).catch(() => {});
-      });
-    }, PROXY_TO_DIRECT_SWITCH_DELAY);
   }
 
   // =======================

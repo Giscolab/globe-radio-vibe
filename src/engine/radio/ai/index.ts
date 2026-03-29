@@ -3,7 +3,7 @@
 // ============================================================================
 // Architecture:
 // - aiEngine: Client-side scoring & recommendation engine (sync, deterministic)
-// - searchAI: Server-side semantic search via Supabase edge functions (async)
+// - searchAI: Client-side descriptor search helpers (async API, local data only)
 // ============================================================================
 
 // AI Engine (client-side recommendation & scoring)
@@ -18,7 +18,7 @@ export {
   type UserSignals,
 } from './aiEngine';
 
-// Search AI (server-side semantic search)
+// Search AI (client-side semantic search)
 export {
   searchByText,
   searchSimilarStations,

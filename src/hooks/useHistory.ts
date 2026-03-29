@@ -55,9 +55,9 @@ export function useHistory() {
 
       try {
         const repo = getSqliteRepository();
-        repo.upsert(station);
-        repo.recordPlay(station.id, durationSeconds);
-        repo.recordSignal('play', station.id, { durationSeconds });
+        await repo.upsert(station);
+        await repo.recordPlay(station.id, durationSeconds);
+        await repo.recordSignal('play', station.id, { durationSeconds });
         storeAddToHistory(station, durationSeconds);
         aiEngine.invalidateCache();
       } catch (error) {
@@ -69,10 +69,10 @@ export function useHistory() {
     [storeAddToHistory]
   );
 
-  const clearHistory = useCallback(() => {
+  const clearHistory = useCallback(async () => {
     storeClearHistory();
     try {
-      getSqliteRepository().clearHistory();
+      await getSqliteRepository().clearHistory();
       aiEngine.invalidateCache();
     } catch (error) {
       console.error('Failed to clear history in SQLite:', error);

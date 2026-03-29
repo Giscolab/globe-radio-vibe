@@ -50,12 +50,12 @@ export function useFavorites() {
         const repo = getSqliteRepository();
 
         if (wasFavorite) {
-          repo.removeFavorite(id);
-          repo.recordSignal('favorite_remove', id);
+          await repo.removeFavorite(id);
+          await repo.recordSignal('favorite_remove', id);
         } else {
-          repo.upsert(station);
-          repo.addFavorite(id);
-          repo.recordSignal('favorite_add', id);
+          await repo.upsert(station);
+          await repo.addFavorite(id);
+          await repo.recordSignal('favorite_add', id);
         }
         aiEngine.invalidateCache();
       } catch (error) {

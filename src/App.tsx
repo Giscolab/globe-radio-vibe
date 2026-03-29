@@ -1,87 +1,89 @@
-import { lazy, Suspense, useState, useEffect } from "react";
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { useSettingsStore } from "@/stores/settings.store";
-import { setForceProxy } from "@/engine/radio/utils/httpsUpgrade";
-import { getEngineConfig } from "@/engine/core/engineConfig";
-import { logger, type LogLevel } from "@/engine/core/logger";
-import { usePlaybackSignals } from "@/hooks/usePlaybackSignals";
-import { initSqliteRepository } from "@/engine/storage/sqlite/stationRepository";
-import { initDatabase } from "@/engine/storage/sqlite/db";
-import { PrivateRoute } from "@/components/PrivateRoute";
+import { lazy, Suspense, useEffect, useState } from 'react';
+import { Toaster } from '@/components/ui/toaster';
+import { Toaster as Sonner } from '@/components/ui/sonner';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { BrowserRouter, Route, Routes } from 'react-router-dom';
+import { getEngineConfig } from '@/engine/core/engineConfig';
+import { initDatabase } from '@/engine/storage/sqlite/db';
+import { initSqliteRepository } from '@/engine/storage/sqlite/stationRepository';
+import { logger, type LogLevel } from '@/engine/core/logger';
+import { usePlaybackSignals } from '@/hooks/usePlaybackSignals';
 
-// Lazy load pages to reduce initial bundle size
-const Index = lazy(() => import("./pages/Index"));
-const NotFound = lazy(() => import("./pages/NotFound"));
-const Login = lazy(() => import("./pages/Login"));
+const Index = lazy(() => import('./pages/Index'));
+const NotFound = lazy(() => import('./pages/NotFound'));
 
 const queryClient = new QueryClient();
 
-// -------------------------------------------------------------------
-// 🔥 GATEKEEPER : Bloque l'app tant que SQLite n'est pas prêt
-// -------------------------------------------------------------------
 function DatabaseInitializer({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
     const init = async () => {
       try {
-        await initDatabase();           // 1️⃣ initialise SQLite
-        await initSqliteRepository();  // 2️⃣ initialise le repo
+        await initDatabase();
+        await initSqliteRepository();
 
         if (!cancelled) {
           setReady(true);
         }
       } catch (err) {
-        console.error("Failed to initialize SQLite:", err);
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to initialize local database');
+        }
       }
     };
 
-    init();
+    void init();
 
     return () => {
       cancelled = true;
     };
   }, []);
 
+  if (error) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-6">
+        <div className="max-w-xl rounded-2xl border border-border/60 bg-card p-6 shadow-lg">
+          <h1 className="text-lg font-semibold text-foreground">SQLite OPFS initialization failed</h1>
+          <p className="mt-3 text-sm text-muted-foreground">{error}</p>
+          <p className="mt-3 text-sm text-muted-foreground">
+            Verify the app is served with `Cross-Origin-Opener-Policy: same-origin` and
+            `Cross-Origin-Embedder-Policy: require-corp`.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (!ready) {
-    return null; // ou <SplashScreen />
+    return <div className="h-screen w-screen bg-background" />;
   }
 
   return <>{children}</>;
 }
 
-
-// Initialize settings on app load
 function SettingsInitializer() {
-  const forceProxy = useSettingsStore((s) => s.forceProxy);
-
   useEffect(() => {
-    setForceProxy(forceProxy);
-  }, [forceProxy]);
-
-  useEffect(() => {
-    const normalizeLevel = (value?: string): LogLevel | "none" | null => {
+    const normalizeLevel = (value?: string): LogLevel | 'none' | null => {
       if (!value) return null;
       const normalized = value.toLowerCase();
-      if (normalized === "none") return "none";
-      if (normalized === "debug") return "debug";
-      if (normalized === "info") return "info";
-      if (normalized === "warn") return "warn";
-      if (normalized === "error") return "error";
+      if (normalized === 'none') return 'none';
+      if (normalized === 'debug') return 'debug';
+      if (normalized === 'info') return 'info';
+      if (normalized === 'warn') return 'warn';
+      if (normalized === 'error') return 'error';
       return null;
     };
 
     const configLevel = normalizeLevel(getEngineConfig().debug.logLevel);
     const envLevel = normalizeLevel(import.meta.env.VITE_LOG_LEVEL);
-    const level = envLevel ?? configLevel ?? "warn";
+    const level = envLevel ?? configLevel ?? 'warn';
 
-    if (level === "none") {
+    if (level === 'none') {
       logger.setEnabled(false);
       return;
     }
@@ -101,36 +103,21 @@ function PlaybackSignalsInitializer() {
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
-      
-      {/* ------------------------------------------------------------------- */}
-      {/* 🔥 WRAPPING : Tout ce qui touche à la donnée est à l'intérieur       */}
-      {/* ------------------------------------------------------------------- */}
       <DatabaseInitializer>
         <SettingsInitializer />
         <PlaybackSignalsInitializer />
-
         <Toaster />
         <Sonner />
 
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <Suspense fallback={<div className="h-screen w-screen bg-background" />}>
             <Routes>
-              <Route
-                path="/"
-                element={
-                  <PrivateRoute>
-                    <Index />
-                  </PrivateRoute>
-                }
-              />
-              <Route path="/login" element={<Login />} />
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+              <Route path="/" element={<Index />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>
         </BrowserRouter>
       </DatabaseInitializer>
-
     </TooltipProvider>
   </QueryClientProvider>
 );
