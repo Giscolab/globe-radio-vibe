@@ -10,7 +10,7 @@ const outputPath = resolve(projectRoot, 'public', 'data', 'world-stations.json')
 function normalizeStation(station) {
   return {
     ...station,
-    countryCode: station.countryCode?.toUpperCase() || '',
+    countryCode: station.countryCode?.toUpperCase() || undefined,
     tags: Array.from(new Set((station.tags || []).map((tag) => String(tag).trim()).filter(Boolean))).slice(0, 24),
     votes: Number(station.votes || 0),
     clickCount: Number(station.clickCount || 0),
@@ -24,7 +24,11 @@ async function main() {
   const radioBrowserModuleUrl = pathToFileURL(
     resolve(projectRoot, 'src', 'engine', 'radio', 'sources', 'radiobrowser.ts')
   ).href;
+  const datasetModuleUrl = pathToFileURL(
+    resolve(projectRoot, 'src', 'engine', 'radio', 'dataset', 'worldStationDataset.ts')
+  ).href;
   const { fetchAllStations, dedupeStations } = await import(radioBrowserModuleUrl);
+  const { createWorldStationDatasetPayload } = await import(datasetModuleUrl);
 
   console.log('[import-world-stations] Fetching stations from RadioBrowser...');
   const fetchedStations = await fetchAllStations({
@@ -34,13 +38,11 @@ async function main() {
 
   const normalizedStations = dedupeStations(fetchedStations.map(normalizeStation));
   const generatedAt = new Date().toISOString();
-  const payload = {
+  const payload = createWorldStationDatasetPayload(normalizedStations, {
     version: generatedAt,
     generatedAt,
     source: 'RadioBrowser',
-    total: normalizedStations.length,
-    stations: normalizedStations,
-  };
+  });
 
   await mkdir(dirname(outputPath), { recursive: true });
   await writeFile(outputPath, JSON.stringify(payload));

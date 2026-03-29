@@ -223,8 +223,8 @@ export function StationList({ stations = [], isLoading }: StationListProps) {
                 onClick={(e) => handleTestConnection(e, station)}
                 disabled={testingIds.has(station.id)}
                 className="neo-raised w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 hover:scale-105 transition-transform disabled:opacity-50"
-                title="Tester la connexion"
-                aria-label={`Tester la connexion de ${station.name}`}
+                title="Tester la connexion (controle ponctuel)"
+                aria-label={`Tester la connexion de ${station.name} (controle ponctuel)`}
               >
                 {testingIds.has(station.id) ? (
                   <Loader2 className="w-4 h-4 text-muted-foreground animate-spin" />

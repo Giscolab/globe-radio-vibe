@@ -1,6 +1,11 @@
 import sqlite3InitModule from '@sqlite.org/sqlite-wasm';
 import migrationsSql from '../engine/storage/sqlite/migrations.sql?raw';
 import localSeedStations from '../engine/storage/sqlite/seed/stations.json';
+import {
+  normalizeWorldStationDatasetPayload,
+  type WorldStationDatasetPayload,
+} from '../engine/radio/dataset/worldStationDataset';
+import type { Station } from '../engine/types/radio';
 import type { DatabaseRequest, DatabaseResponse } from './sqlite-opfs-init';
 
 type SqliteExecOptions<Row> = {
@@ -25,35 +30,7 @@ type SqliteWasmModule = {
   };
 };
 
-type SeedStation = {
-  id: string;
-  name: string;
-  url: string;
-  urlResolved?: string;
-  homepage?: string;
-  favicon?: string;
-  country: string;
-  countryCode?: string;
-  state?: string;
-  language?: string;
-  codec?: string;
-  bitrate?: number;
-  votes?: number;
-  clickCount?: number;
-  clickTrend?: number;
-  geo?: { lat: number; lon: number };
-  tags?: string[];
-  lastCheckOk?: boolean;
-  lastCheckTime?: string;
-};
-
-type WorldDatasetPayload = {
-  version: string;
-  generatedAt: string;
-  source: string;
-  total: number;
-  stations: SeedStation[];
-};
+type SeedStation = Station;
 
 type InitResult = {
   mode: 'opfs';
@@ -253,7 +230,7 @@ function applyMigrations(db: SqliteWasmDb): void {
   dbExec(db, migrationsSql);
 }
 
-async function loadWorldDataset(): Promise<WorldDatasetPayload | null> {
+async function loadWorldDataset(): Promise<WorldStationDatasetPayload | null> {
   try {
     const response = await fetch(WORLD_DATASET_URL, { cache: 'no-store' });
     if (!response.ok) {
@@ -267,29 +244,12 @@ async function loadWorldDataset(): Promise<WorldDatasetPayload | null> {
       return null;
     }
 
-    if (Array.isArray(payload)) {
-      return {
-        version: 'legacy',
-        generatedAt: new Date().toISOString(),
-        source: 'RadioBrowser',
-        total: payload.length,
-        stations: payload as SeedStation[],
-      };
-    }
-
-    const candidate = payload as Partial<WorldDatasetPayload>;
-    if (!Array.isArray(candidate.stations)) {
-      log('warn', 'World dataset has no stations array');
-      return null;
-    }
-
-    return {
-      version: candidate.version || 'unknown',
-      generatedAt: candidate.generatedAt || new Date().toISOString(),
-      source: candidate.source || 'RadioBrowser',
-      total: candidate.total ?? candidate.stations.length,
-      stations: candidate.stations,
-    };
+    return normalizeWorldStationDatasetPayload(payload, {
+      acceptLegacyArray: true,
+      legacyGeneratedAt: new Date().toISOString(),
+      legacySource: 'RadioBrowser',
+      legacyVersion: 'legacy',
+    });
   } catch (error) {
     log('warn', 'Failed to load world dataset', error);
     return null;

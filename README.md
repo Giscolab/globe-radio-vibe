@@ -27,6 +27,9 @@ npm run build
 npm run lint
 npm run typecheck
 npm run import:world-stations
+npm run validate:world-stations
+npm run verify:world-stations
+npm run check:world-stations
 ```
 
 ## OPFS requirements
