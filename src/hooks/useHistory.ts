@@ -1,6 +1,6 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { useRadioStore, type PlayRecord } from '@/stores/radio';
-import { getSqliteRepository } from '@/engine/storage/sqlite/stationRepository';
+import { initSqliteRepository } from '@/engine/storage/sqlite/stationRepository';
 import { aiEngine } from '@/engine/radio/ai';
 import type { Station } from '@/engine/types';
 
@@ -22,7 +22,7 @@ export function useHistory() {
 
     const loadHistory = async () => {
       try {
-        const repo = getSqliteRepository();
+        const repo = await initSqliteRepository({ awaitHydration: true });
         const records = repo.getPlayHistory(100);
 
         const mapped: PlayRecord[] = records.map((record) => ({
@@ -54,7 +54,7 @@ export function useHistory() {
       pendingAdds.current.add(key);
 
       try {
-        const repo = getSqliteRepository();
+        const repo = await initSqliteRepository({ awaitHydration: true });
         await repo.upsert(station);
         await repo.recordPlay(station.id, durationSeconds);
         await repo.recordSignal('play', station.id, { durationSeconds });
@@ -72,7 +72,8 @@ export function useHistory() {
   const clearHistory = useCallback(async () => {
     storeClearHistory();
     try {
-      await getSqliteRepository().clearHistory();
+      const repo = await initSqliteRepository({ awaitHydration: true });
+      await repo.clearHistory();
       aiEngine.invalidateCache();
     } catch (error) {
       console.error('Failed to clear history in SQLite:', error);

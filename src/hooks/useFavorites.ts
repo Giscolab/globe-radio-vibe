@@ -1,6 +1,6 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { useRadioStore } from '@/stores/radio';
-import { getSqliteRepository } from '@/engine/storage/sqlite/stationRepository';
+import { initSqliteRepository } from '@/engine/storage/sqlite/stationRepository';
 import { aiEngine } from '@/engine/radio/ai';
 import type { Station } from '@/engine/types';
 
@@ -22,7 +22,7 @@ export function useFavorites() {
 
     const loadFavorites = async () => {
       try {
-        const repo = getSqliteRepository();
+        const repo = await initSqliteRepository({ awaitHydration: true });
         const stored = repo.getFavorites();
         setFavorites(stored);
       } catch (error) {
@@ -47,7 +47,7 @@ export function useFavorites() {
       storeToggle(station);
 
       try {
-        const repo = getSqliteRepository();
+        const repo = await initSqliteRepository({ awaitHydration: true });
 
         if (wasFavorite) {
           await repo.removeFavorite(id);

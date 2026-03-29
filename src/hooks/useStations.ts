@@ -1,18 +1,17 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
+import { useEffect, useMemo, useRef } from 'react';
 import { getByCountry } from '@/engine/radio/stationService';
 import { useRadioStore } from '@/stores/radio';
-import { useEffect, useMemo, useRef } from 'react';
-import type { Station } from '@/engine/types/radio';   // ← IMPORT CRITIQUE
+import type { Station } from '@/engine/types/radio';
 
 const DEFAULT_PAGE_SIZE = 50;
 
 export function useStations(countryCode: string | null, pageSize = DEFAULT_PAGE_SIZE) {
-  const { setStations, setLoading } = useRadioStore();
-  const stableStationsRef = useRef<Station[]>([]);
+  const setStations = useRadioStore((state) => state.setStations);
+  const setLoading = useRadioStore((state) => state.setLoading);
   const initializedRef = useRef(false);
 
   useEffect(() => {
-    stableStationsRef.current = [];
     initializedRef.current = false;
     setStations([]);
   }, [countryCode, setStations]);
@@ -20,7 +19,10 @@ export function useStations(countryCode: string | null, pageSize = DEFAULT_PAGE_
   const query = useInfiniteQuery({
     queryKey: ['stations', countryCode, pageSize],
     queryFn: async ({ pageParam }) => {
-      if (!countryCode) throw new Error('No country code');
+      if (!countryCode) {
+        throw new Error('No country code');
+      }
+
       return getByCountry(countryCode, { limit: pageSize, offset: pageParam });
     },
     initialPageParam: 0,
@@ -31,37 +33,34 @@ export function useStations(countryCode: string | null, pageSize = DEFAULT_PAGE_
       lastPage.length < pageSize ? undefined : allPages.length * pageSize,
   });
 
-  const pagedStations = useMemo(
-    () => query.data?.pages.flat() ?? [],
-    [query.data?.pages]
-  );
+  const pagedStations = useMemo(() => query.data?.pages.flat() ?? [], [query.data?.pages]);
 
   useEffect(() => {
-    if (!countryCode) return;
+    if (!countryCode) {
+      setLoading(false);
+      return;
+    }
 
     if (!initializedRef.current && query.isLoading) {
       setLoading(true);
     }
 
-    if (query.isSuccess) {
+    if (query.isSuccess || query.isError) {
       initializedRef.current = true;
       setLoading(false);
     }
-  }, [countryCode, query.isLoading, query.isSuccess, setLoading]);
+  }, [countryCode, query.isError, query.isLoading, query.isSuccess, setLoading]);
 
   useEffect(() => {
-    const data = pagedStations;
+    if (!query.isSuccess) {
+      return;
+    }
 
-    // ❌ 1) Pas de données → on ne touche à rien
-    if (!data || data.length === 0) return;
-
-    // ✅ Mise à jour stable
-    stableStationsRef.current = data;
-    setStations(data);
-  }, [pagedStations, setStations]);
+    setStations(pagedStations);
+  }, [pagedStations, query.isSuccess, setStations]);
 
   return {
-    stations: stableStationsRef.current,
+    stations: pagedStations,
     isLoading: query.isLoading,
     isFetching: query.isFetching,
     isFetchingNextPage: query.isFetchingNextPage,

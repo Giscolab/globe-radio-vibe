@@ -16,7 +16,6 @@ const NotFound = lazy(() => import('./pages/NotFound'));
 const queryClient = new QueryClient();
 
 function DatabaseInitializer({ children }: { children: React.ReactNode }) {
-  const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -25,11 +24,10 @@ function DatabaseInitializer({ children }: { children: React.ReactNode }) {
     const init = async () => {
       try {
         await initDatabase();
-        await initSqliteRepository();
 
-        if (!cancelled) {
-          setReady(true);
-        }
+        void initSqliteRepository().catch((repoError) => {
+          logger.warn('Storage', 'Repository hydration failed', repoError);
+        });
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Failed to initialize local database');
@@ -44,26 +42,24 @@ function DatabaseInitializer({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  if (error) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background px-6">
-        <div className="max-w-xl rounded-2xl border border-border/60 bg-card p-6 shadow-lg">
-          <h1 className="text-lg font-semibold text-foreground">SQLite OPFS initialization failed</h1>
-          <p className="mt-3 text-sm text-muted-foreground">{error}</p>
-          <p className="mt-3 text-sm text-muted-foreground">
-            Verify the app is served with `Cross-Origin-Opener-Policy: same-origin` and
-            `Cross-Origin-Embedder-Policy: require-corp`.
-          </p>
+  return (
+    <>
+      {children}
+
+      {error && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 px-6 backdrop-blur-sm">
+          <div className="max-w-xl rounded-2xl border border-border/60 bg-card p-6 shadow-lg">
+            <h1 className="text-lg font-semibold text-foreground">SQLite OPFS initialization failed</h1>
+            <p className="mt-3 text-sm text-muted-foreground">{error}</p>
+            <p className="mt-3 text-sm text-muted-foreground">
+              Verify the app is served with `Cross-Origin-Opener-Policy: same-origin` and
+              `Cross-Origin-Embedder-Policy: require-corp`.
+            </p>
+          </div>
         </div>
-      </div>
-    );
-  }
-
-  if (!ready) {
-    return <div className="h-screen w-screen bg-background" />;
-  }
-
-  return <>{children}</>;
+      )}
+    </>
+  );
 }
 
 function SettingsInitializer() {

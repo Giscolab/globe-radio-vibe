@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { audioEngine, type AudioEngineState } from '@/engine/player/audioEngine';
-import { getSqliteRepository } from '@/engine/storage/sqlite/stationRepository';
+import { initSqliteRepository } from '@/engine/storage/sqlite/stationRepository';
 import { aiEngine } from '@/engine/radio/ai';
 import { useHistory } from './useHistory';
 
@@ -26,8 +26,8 @@ export function usePlaybackSignals() {
         recordPlay(previous.currentStation, durationSeconds);
 
         if (durationSeconds > 0 && durationSeconds < SKIP_THRESHOLD_SECONDS) {
-          void getSqliteRepository()
-            .recordSignal('skip', previous.currentStation.id, { durationSeconds })
+          void initSqliteRepository({ awaitHydration: true })
+            .then((repo) => repo.recordSignal('skip', previous.currentStation.id, { durationSeconds }))
             .then(() => {
               aiEngine.invalidateCache();
             })
@@ -38,10 +38,12 @@ export function usePlaybackSignals() {
       }
 
       if (state.status === 'error' && previous.status !== 'error' && state.currentStation) {
-        void getSqliteRepository()
-          .recordSignal('error', state.currentStation.id, {
-            details: state.error ?? 'Erreur de lecture',
-          })
+        void initSqliteRepository({ awaitHydration: true })
+          .then((repo) =>
+            repo.recordSignal('error', state.currentStation.id, {
+              details: state.error ?? 'Erreur de lecture',
+            })
+          )
           .then(() => {
             aiEngine.invalidateCache();
           })

@@ -154,6 +154,7 @@ function buildPaginationClause(options?: QueryOptions): { clause: string; params
 
 export class SqliteStationRepository {
   private db: SqliteDatabase | null = null;
+  private hydrationPromise: Promise<void> | null = null;
   private writeQueue: Promise<void> = Promise.resolve();
   private stationCache = new Map<string, Station>();
   private favorites = new Map<string, string>();
@@ -161,18 +162,33 @@ export class SqliteStationRepository {
   private aiSignals: AISignalRecord[] = [];
   private settings = new Map<string, unknown>();
 
-  async initialize(): Promise<void> {
-    if (this.db) {
-      return;
-    }
-
-    await initDatabase();
-    this.db = getDatabase();
+  async initialize(options?: { awaitHydration?: boolean }): Promise<void> {
     if (!this.db) {
-      throw new Error('Database not initialized');
+      logger.info('SqliteRepo', 'Initializing repository...');
+      await initDatabase();
+      this.db = getDatabase();
+      if (!this.db) {
+        throw new Error('Database not initialized');
+      }
     }
 
-    await this.hydrateLocalState();
+    if (!this.hydrationPromise) {
+      this.hydrationPromise = (async () => {
+        await this.hydrateLocalState();
+        logger.info('SqliteRepo', 'Repository initialized');
+      })().catch((error) => {
+        this.hydrationPromise = null;
+        throw error;
+      });
+    }
+
+    if (options?.awaitHydration) {
+      await this.hydrationPromise;
+    }
+  }
+
+  async ensureHydrated(): Promise<void> {
+    await this.initialize({ awaitHydration: true });
   }
 
   private async getDb(): Promise<SqliteDatabase> {
@@ -211,6 +227,7 @@ export class SqliteStationRepository {
 
   private async hydrateLocalState(): Promise<void> {
     const db = await this.getDb();
+    logger.info('SqliteRepo', 'Hydrating local state...');
 
     const favoriteRows = await db.selectObjects<FavoriteRow>(
       `SELECT s.*, f.added_at
@@ -267,6 +284,11 @@ export class SqliteStationRepository {
         this.settings.set(row.key, row.value);
       }
     }
+
+    logger.info(
+      'SqliteRepo',
+      `Hydrated state (favorites=${this.favorites.size}, history=${this.playHistory.length}, signals=${this.aiSignals.length}, settings=${this.settings.size})`
+    );
   }
 
   async getAll(options?: QueryOptions): Promise<Station[]> {
@@ -574,8 +596,13 @@ export class SqliteStationRepository {
 let sqliteRepo: SqliteStationRepository | null = null;
 let initializing: Promise<SqliteStationRepository> | null = null;
 
-export async function initSqliteRepository(): Promise<SqliteStationRepository> {
+export async function initSqliteRepository(options?: {
+  awaitHydration?: boolean;
+}): Promise<SqliteStationRepository> {
   if (sqliteRepo) {
+    if (options?.awaitHydration) {
+      await sqliteRepo.ensureHydrated();
+    }
     return sqliteRepo;
   }
 
@@ -588,6 +615,9 @@ export async function initSqliteRepository(): Promise<SqliteStationRepository> {
   }
 
   sqliteRepo = await initializing;
+  if (options?.awaitHydration) {
+    await sqliteRepo.ensureHydrated();
+  }
   return sqliteRepo;
 }
 

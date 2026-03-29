@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS ai_signals (
 );
 
 CREATE INDEX IF NOT EXISTS idx_stations_country ON stations (country);
+CREATE INDEX IF NOT EXISTS idx_stations_country_code ON stations (country_code);
 CREATE INDEX IF NOT EXISTS idx_stations_name ON stations (name);
 CREATE INDEX IF NOT EXISTS idx_stations_votes ON stations (votes);
 CREATE INDEX IF NOT EXISTS idx_stations_tags ON stations (tags);
