@@ -1,7 +1,6 @@
 import { defineConfig, type ViteDevServer } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
-import { componentTagger } from "lovable-tagger";
 import { registerImageProxy } from "./src/server/image-proxy";
 
 export default defineConfig(({ mode }) => ({
@@ -47,7 +46,6 @@ export default defineConfig(({ mode }) => ({
 
   plugins: [
     react(),
-    mode === "development" && componentTagger(),
     {
       name: "wasm-mime-fix",
       configureServer(server: ViteDevServer) {

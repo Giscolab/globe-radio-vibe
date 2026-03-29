@@ -24,8 +24,12 @@ function isValidUUID(id: string): boolean {
 
 // Sanitize descriptor
 function sanitizeDescriptor(descriptor: string): string {
-  return descriptor
-    .replace(/[\x00-\x1F\x7F]/g, '') // Remove control characters
+  return Array.from(descriptor)
+    .filter((char) => {
+      const code = char.charCodeAt(0);
+      return code >= 32 && code !== 127;
+    })
+    .join('')
     .trim()
     .slice(0, MAX_DESCRIPTOR_LENGTH);
 }

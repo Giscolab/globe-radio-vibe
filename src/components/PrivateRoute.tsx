@@ -9,7 +9,11 @@ type PrivateRouteProps = {
 
 export function PrivateRoute({ children }: PrivateRouteProps) {
   const location = useLocation();
-  const { loading, isAuthenticated } = useAuth();
+  const { loading, isAuthenticated, authEnabled } = useAuth();
+
+  if (!authEnabled) {
+    return <>{children}</>;
+  }
 
   if (loading) {
     return (

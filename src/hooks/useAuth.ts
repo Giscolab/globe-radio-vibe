@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import type { Session, User } from "@supabase/supabase-js";
-import { supabase } from "@/integrations/supabase/client";
+import { isSupabaseConfigured, supabase } from "@/integrations/supabase/client";
 
 type AuthState = {
   session: Session | null;
   user: User | null;
   loading: boolean;
   isAuthenticated: boolean;
+  authEnabled: boolean;
 };
 
 export function useAuth(): AuthState {
@@ -14,6 +15,12 @@ export function useAuth(): AuthState {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!isSupabaseConfigured) {
+      setSession(null);
+      setLoading(false);
+      return;
+    }
+
     let mounted = true;
 
     const loadSession = async () => {
@@ -48,5 +55,6 @@ export function useAuth(): AuthState {
     user,
     loading,
     isAuthenticated: Boolean(session?.access_token),
+    authEnabled: isSupabaseConfigured,
   };
 }

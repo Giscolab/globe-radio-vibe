@@ -1,5 +1,5 @@
 // ============================================================================
-// AI Search Service - Client-side interface for Supabase AI-powered search
+// Search service - Client-side interface for Supabase descriptor search
 // ============================================================================
 // Responsabilités:
 // - Interface vers les edge functions de recherche sémantique
@@ -7,7 +7,7 @@
 // - Gestion robuste des erreurs et retours vides
 // ============================================================================
 
-import { supabase } from '@/integrations/supabase/client';
+import { isSupabaseConfigured, supabase } from '@/integrations/supabase/client';
 import type { Station, EnrichedStation } from '@/engine/types';
 import { buildAIDescriptors } from '@/engine/radio/enrichment/aiDescriptor';
 
@@ -73,7 +73,7 @@ export async function searchByText(
   stations: Station[],
   limit = 20
 ): Promise<Station[]> {
-  if (!query.trim()) return [];
+  if (!query.trim() || !isSupabaseConfigured) return [];
 
   try {
     const { data, error } = await supabase.functions.invoke<SearchResponse>('search-stations', {
@@ -109,7 +109,7 @@ export async function searchSimilarStations(
   stations: Station[],
   limit = 10
 ): Promise<Station[]> {
-  if (!stationId) return [];
+  if (!stationId || !isSupabaseConfigured) return [];
 
   try {
     const { data, error } = await supabase.functions.invoke<SearchResponse>('similar-stations', {
@@ -193,7 +193,7 @@ export async function searchByAmbience(
  * Sync station embeddings to the database (batch operation)
  */
 export async function syncEmbeddings(stations: EnrichedStation[]): Promise<boolean> {
-  if (!stations.length) return true;
+  if (!stations.length || !isSupabaseConfigured) return true;
 
   try {
     const descriptors = buildAIDescriptors(stations);

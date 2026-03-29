@@ -1,4 +1,4 @@
-project_id = "qrufkomvbsjwqmpstecu"
+project_id = "globe-radio-vibe"
 
 [functions.check-station-health]
 verify_jwt = false

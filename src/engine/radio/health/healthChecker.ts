@@ -1,6 +1,6 @@
 // Engine - Health Checker: ping stations via backend proxy
 
-import { supabase } from '@/integrations/supabase/client';
+import { isSupabaseConfigured, supabase } from '@/integrations/supabase/client';
 import { createLogger } from '@/engine/core/logger';
 
 const log = createLogger('HealthChecker');
@@ -35,6 +35,17 @@ export async function checkStationsHealthBatch(
   const results = new Map<string, StationHealth>();
 
   if (stations.length === 0) return results;
+  if (!isSupabaseConfigured) {
+    for (const station of stations) {
+      results.set(station.id, {
+        ok: true,
+        latency: null,
+        lastChecked: Date.now(),
+        error: 'Health check unavailable',
+      });
+    }
+    return results;
+  }
 
   try {
     const { data, error } = await supabase.functions.invoke<HealthCheckResponse>('check-station-health', {

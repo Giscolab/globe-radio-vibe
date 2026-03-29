@@ -1,22 +1,24 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Loader2, Radio } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { isSupabaseConfigured, supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 
 type LocationState = {
-  from?: Location;
+  from?: {
+    pathname?: string;
+  };
 };
 
 const emailRegex = /^\S+@\S+\.\S+$/;
 
 function getLoginErrorMessage(message?: string) {
-  if (!message) return "Une erreur est survenue. Réessayez.";
+  if (!message) return "Une erreur est survenue. Reessayez.";
   if (message.toLowerCase().includes("invalid login credentials")) {
     return "Email ou mot de passe incorrect.";
   }
   if (message.toLowerCase().includes("email not confirmed")) {
-    return "Votre email n'est pas confirmé. Vérifiez votre boîte mail.";
+    return "Votre email n'est pas confirme. Verifiez votre boite mail.";
   }
   return message;
 }
@@ -24,7 +26,7 @@ function getLoginErrorMessage(message?: string) {
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, authEnabled } = useAuth();
 
   const redirectPath = useMemo(() => {
     const state = location.state as LocationState | null;
@@ -38,15 +40,24 @@ export default function Login() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
+    if (!authEnabled) {
+      return;
+    }
+
     if (!loading && isAuthenticated) {
       navigate(redirectPath, { replace: true });
     }
-  }, [isAuthenticated, loading, navigate, redirectPath]);
+  }, [authEnabled, isAuthenticated, loading, navigate, redirectPath]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
     setSuccess(null);
+
+    if (!isSupabaseConfigured) {
+      setError("Supabase n'est pas configure pour ce projet.");
+      return;
+    }
 
     if (!emailRegex.test(email)) {
       setError("Merci d'entrer une adresse email valide.");
@@ -74,11 +85,11 @@ export default function Login() {
       const { data, error: sessionError } = await supabase.auth.getSession();
 
       if (sessionError || !data.session?.access_token) {
-        setError("Connexion réussie, mais la session est introuvable.");
+        setError("Connexion reussie, mais la session est introuvable.");
         return;
       }
 
-      setSuccess("Connexion réussie. Redirection en cours...");
+      setSuccess("Connexion reussie. Redirection en cours...");
       navigate(redirectPath, { replace: true });
     } catch (err) {
       setError(getLoginErrorMessage(err instanceof Error ? err.message : undefined));
@@ -86,6 +97,38 @@ export default function Login() {
       setSubmitting(false);
     }
   };
+
+  if (!authEnabled) {
+    return (
+      <div className="min-h-screen w-full bg-background flex items-center justify-center px-4">
+        <div className="w-full max-w-md rounded-2xl border border-border/60 bg-card p-8 shadow-lg">
+          <div className="flex items-center gap-3 mb-6">
+            <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <Radio className="h-5 w-5" />
+            </span>
+            <div>
+              <h1 className="text-2xl font-semibold text-foreground">Connexion indisponible</h1>
+              <p className="text-sm text-muted-foreground">
+                L'authentification est desactivee tant que Supabase n'est pas configure.
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-700">
+            Ajoutez `VITE_SUPABASE_URL` et `VITE_SUPABASE_PUBLISHABLE_KEY` pour reactiver la connexion.
+          </div>
+
+          <button
+            type="button"
+            onClick={() => navigate("/", { replace: true })}
+            className="mt-6 flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition hover:bg-primary/90"
+          >
+            Retour a l'application
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen w-full bg-background flex items-center justify-center px-4">
@@ -97,7 +140,7 @@ export default function Login() {
           <div>
             <h1 className="text-2xl font-semibold text-foreground">Connexion</h1>
             <p className="text-sm text-muted-foreground">
-              Accédez aux stations et à votre session Supabase.
+              Accedez aux stations et a votre session Supabase.
             </p>
           </div>
         </div>
@@ -127,7 +170,7 @@ export default function Login() {
               type="password"
               autoComplete="current-password"
               className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground shadow-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
-              placeholder="••••••••"
+              placeholder="........"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
             />
