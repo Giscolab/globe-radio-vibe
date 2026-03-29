@@ -38,6 +38,10 @@ type SqliteWasmModule = {
   };
 };
 
+type SqliteInitModuleOptions = {
+  printErr?: (...args: unknown[]) => void;
+};
+
 interface DatabaseState {
   db: SqliteDatabase | null;
   mode: StorageMode;
@@ -52,8 +56,17 @@ const state: DatabaseState = {
 
 const DB_NAME = 'globe-radio.sqlite3';
 
+function isMainThreadBrowser(): boolean {
+  return typeof document !== 'undefined';
+}
+
 async function detectOPFS(): Promise<boolean> {
   try {
+    if (isMainThreadBrowser()) {
+      logger.info('Storage', 'OPFS persistence requires a worker thread. Using memory-backed SQLite in the UI thread.');
+      return false;
+    }
+
     if (!navigator.storage?.getDirectory) return false;
     const root = await navigator.storage.getDirectory();
     const testHandle = await root.getFileHandle('__opfs_test__', { create: true });
@@ -69,8 +82,22 @@ let sqlitePromise: Promise<SqliteWasmModule> | null = null;
 
 async function loadSqliteWasm(): Promise<SqliteWasmModule> {
   if (!sqlitePromise) {
-    // Initialize without wasmBinary - let the module load it via locateFile
-    sqlitePromise = sqlite3InitModule() as Promise<SqliteWasmModule>;
+    const initModule = sqlite3InitModule as unknown as (
+      options?: SqliteInitModuleOptions
+    ) => Promise<SqliteWasmModule>;
+
+    sqlitePromise = initModule({
+      printErr: (...args: unknown[]) => {
+        const message = args.join(' ');
+
+        if (message.includes('Ignoring inability to install OPFS sqlite3_vfs')) {
+          logger.debug('Storage', 'SQLite OPFS VFS is unavailable on the main thread.');
+          return;
+        }
+
+        console.warn(...args);
+      },
+    });
   }
   return sqlitePromise;
 }

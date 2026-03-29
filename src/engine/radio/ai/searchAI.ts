@@ -193,7 +193,8 @@ export async function searchByAmbience(
  * Sync station embeddings to the database (batch operation)
  */
 export async function syncEmbeddings(stations: EnrichedStation[]): Promise<boolean> {
-  if (!stations.length || !isSupabaseConfigured) return true;
+  if (!stations.length) return true;
+  if (!isSupabaseConfigured) return false;
 
   try {
     const descriptors = buildAIDescriptors(stations);

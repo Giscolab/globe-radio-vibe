@@ -4,6 +4,7 @@ import { Sparkles, RefreshCw, Radio } from 'lucide-react';
 import { useRadioStore } from '@/stores/radio';
 import { aiEngine, type AIExplanation } from '@/engine/radio/ai';
 import { usePlayer } from '@/hooks/usePlayer';
+import { proxify } from '@/utils/image';
 
 export function RecommendationsPanel() {
   const { stations, recommendations, setRecommendations, currentStation, isPlaying } = useRadioStore();
@@ -69,6 +70,7 @@ export function RecommendationsPanel() {
           {recommendations.slice(0, 6).map((station) => {
             const isActive = currentStation?.id === station.id;
             const isCurrentlyPlaying = isActive && isPlaying;
+            const faviconUrl = proxify(station.favicon);
             
             return (
               <button
@@ -83,9 +85,9 @@ export function RecommendationsPanel() {
                   }
                 `}
               >
-                {station.favicon ? (
+                {faviconUrl ? (
                   <img
-                    src={station.favicon}
+                    src={faviconUrl}
                     alt=""
                     loading="lazy"
                     decoding="async"

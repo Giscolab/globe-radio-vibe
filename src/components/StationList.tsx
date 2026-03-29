@@ -19,6 +19,7 @@ interface StationListProps {
 
 export function StationList({ stations = [], isLoading }: StationListProps) {
   const { currentStation, status, play, toggle } = usePlayer();
+  const currentStationId = currentStation?.id ?? '';
 
   const stationHealth = useRadioStore((s) => s.stationHealth);
   const setSelectedGenre = useRadioStore((s) => s.setSelectedGenre);
@@ -72,14 +73,14 @@ export function StationList({ stations = [], isLoading }: StationListProps) {
 
   const handleRowAction = useCallback(
     (station: Station) => {
-      const isActive = currentStation?.id === station.id;
+      const isActive = currentStationId === station.id;
       if (isActive) {
         toggle();
       } else {
         play(station);
       }
     },
-    [currentStation?.id ?? '', play, toggle]
+    [currentStationId, play, toggle]
   );
 
   const handleRowKeyDown = useCallback(

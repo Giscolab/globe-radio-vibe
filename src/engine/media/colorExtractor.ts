@@ -1,6 +1,7 @@
 // Engine - Media: Color extraction from favicon images using Canvas API
 import type { ExtractedColors } from '@/engine/types/radio';
 import { faviconColorCache } from './faviconColorCache';
+import { proxify } from '@/utils/image';
 
 // In-memory cache for session (fallback)
 const sessionCache = new Map<string, ExtractedColors>();
@@ -22,7 +23,7 @@ export async function extractColors(faviconUrl: string): Promise<ExtractedColors
   }
 
   try {
-    const img = await loadImage(faviconUrl);
+    const img = await loadImage(proxify(faviconUrl) ?? faviconUrl);
     const colors = extractColorsFromImage(img);
     
     if (colors) {

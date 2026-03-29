@@ -11,6 +11,7 @@ import { enrichStationSync } from '@/engine/radio/enrichment/stationEnricher';
 import { getHealthTier } from '@/engine/radio/health';
 import { needsProxy, isForceProxyEnabled } from '@/engine/radio/utils/httpsUpgrade';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { proxify } from '@/utils/image';
 
 
 export function PlayerBar() {
@@ -57,6 +58,7 @@ export function PlayerBar() {
   const isProxied = currentStation?.url 
     ? (isForceProxyEnabled() && !currentStation.url.startsWith('https://')) || needsProxy(currentStation.url) 
     : false;
+  const faviconUrl = proxify(currentStation?.favicon);
 
   const statusLabel = (() => {
     if (!currentStation) return 'Prêt';
@@ -79,9 +81,9 @@ export function PlayerBar() {
               : undefined,
           }}
         >
-          {currentStation?.favicon ? (
+          {faviconUrl ? (
             <img 
-              src={currentStation.favicon} 
+              src={faviconUrl} 
               alt="" 
               className="w-10 h-10 rounded-full object-cover relative z-10" 
               onError={(e) => {

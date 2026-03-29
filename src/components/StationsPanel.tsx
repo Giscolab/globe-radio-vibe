@@ -16,6 +16,7 @@ import { aiEngine, syncEmbeddings, type AmbienceType } from '@/engine/radio/ai';
 import { enrichStationSync } from '@/engine/radio/enrichment/stationEnricher';
 import { healthMonitor } from '@/engine/radio/health';
 import { getTopStations } from '@/engine/radio/stationService';
+import { isSupabaseConfigured } from '@/integrations/supabase/client';
 
 type TabId = 'stations' | 'favorites' | 'history' | 'settings';
 
@@ -148,6 +149,8 @@ export function StationsPanel({ onClose }: StationsPanelProps) {
   // Sync embeddings when stations are loaded - batched to reduce TBT
   useEffect(() => {
     const stationsToSync = selectedCountry ? stations : topStations;
+    if (!isSupabaseConfigured) return;
+
     if (stationsToSync.length > 0 && !hasSynced) {
       const scheduleTask = window.requestIdleCallback || ((cb: () => void) => setTimeout(cb, 4000));
       
@@ -168,7 +171,8 @@ export function StationsPanel({ onClose }: StationsPanelProps) {
             setTimeout(processBatch, 0);
           } else {
             // All done, sync embeddings
-            syncEmbeddings(enriched).then(() => {
+            syncEmbeddings(enriched).then((didSync) => {
+              if (!didSync) return;
               setHasSynced(true);
               console.log('[StationsPanel] Embeddings synced');
             });

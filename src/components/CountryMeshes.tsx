@@ -74,9 +74,15 @@ export function CountryMeshes({ features, radius, onMeshesReady }: CountryMeshes
     return features.map((feature, index) => {
       const geometry = buildCountryGeometry(feature.geometry, radius);
       const iso = feature.properties?.iso_a2 ?? String(feature.id ?? index);
+      const meshId = [
+        String(feature.id ?? 'country'),
+        String(feature.properties?.iso_a2 ?? 'xx'),
+        String(feature.properties?.name ?? 'unknown'),
+        String(index),
+      ].join(':');
 
       return {
-        id: String(feature.id ?? index),
+        id: meshId,
         name: feature.properties?.name ?? 'Unknown',
         iso,
         geometry,
